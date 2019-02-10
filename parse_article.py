@@ -1,4 +1,4 @@
-import xml.etree.ElementTree as ET
+import xml.etree.ElementTree as et
 
 
 class Metadata(object):
@@ -17,7 +17,7 @@ class Journal(object):
         self.title = None
 
     def __repr__(self):
-        return "Journal(id='{}', title='{}')".format(self.id, self.title)
+        return "Journal(id='{}', title='{}')".format(self.jid, self.title)
 
 
 class Paragraph(object):
@@ -74,23 +74,28 @@ class Body(object):
             sections = [(ele.title, ele.get_titles()) for ele in self.sections]
         return sections
 
-    def get_flat_body(self):
+    def get_flat_body(self, sections=None):
         bd = []
         for sec in self.sections:
-            bd.extend(sec.get_content(flatten=True))
+            if sections is None or (isinstance(sections, list) and sec.title in sections):
+                bd.extend(sec.get_content(flatten=True))
         return bd
 
-    def get_nested_body(self, main_sections=False):
+    def get_nested_body(self, main_sections=False, sections=None):
         if main_sections is True:
-            sections = [(sec.title, " ".join(sec.get_content(flatten=True))) for sec in self.sections]
+            secs = [(sec.title, " ".join(sec.get_content(flatten=True))) for sec in self.sections]
         else:
-            sections = [(sec.title, sec.get_content()) for sec in self.sections]
-        return sections
+            secs = [(sec.title, sec.get_content()) for sec in self.sections]
+
+        if sections is not None:
+            secs = [e for e in secs if e[0] in sections]
+
+        return secs
 
 
 class Article(object):
     def __init__(self):
-        self.jorunal = None
+        self.journal = None
         self.metadata = None
         self.article_type = None
         self.body = None
@@ -120,7 +125,7 @@ class Article(object):
 
 
 def iter_articles(xml_file):
-    for event, elem in ET.iterparse(xml_file, events=("end",)):
+    for event, elem in et.iterparse(xml_file, events=("end",)):
         if event == 'end':
             if elem.tag == 'article':
                 yield elem
@@ -129,8 +134,8 @@ def iter_articles(xml_file):
 def parse_body(body):
     bd = Body()
     for section in list(body):
-       sec_txt = parse_section(section)
-       bd.sections.append(sec_txt)
+        sec_txt = parse_section(section)
+        bd.sections.append(sec_txt)
     return bd
 
 
@@ -150,7 +155,6 @@ def parse_section(section):
             sec.content.append(p)
 
         else:
-            elem_text = None
             print(elem.tag)
 
     return sec
@@ -171,8 +175,8 @@ def parse_front(front):
 
 def parse_article(xml):
     if isinstance(xml, str):
-        xml_tree = ET.parse(xml, events=("start", "end"))
-    elif isinstance(xml, ET.Element):
+        xml_tree = et.parse(xml)
+    elif isinstance(xml, et.Element):
         xml_tree = xml
     else:
         raise ValueError("Expecting str or ET.Element, instead I got (%s)", type(xml))
@@ -180,11 +184,13 @@ def parse_article(xml):
     art = Article()
     art.article_type = xml_tree.attrib.get("article-type")
 
-    for elem in xml_tree.iter():
+    for elem in list(xml_tree):
         if elem.tag == "front":
             art.journal, art.metadata = parse_front(elem)
         elif elem.tag == "body":
             art.body = parse_body(elem)
         elif elem.tag == "back":
+            pass
+        elif elem.tag == "floats-group":
             pass
     return art
