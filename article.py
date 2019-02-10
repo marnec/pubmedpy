@@ -93,8 +93,8 @@ class Metadata(object):
                                                                               self.authors)
 
     def parse(self, stub):
-        self.pmid = stub.find("article-id[@pub-id-type=\"pmcid\"]").text
-        self.doi = stub.find("article-id[@pub-id-type=\"doi\"]").text
+        self.pmid = stub.find("article-id[@pub-id-type='pmcid']").text
+        self.doi = stub.find("article-id[@pub-id-type='doi']").text
         self.title = stub.find("title-group/article-title").text
         self.authors = self._parse_authors(
             stub.findall("contrib-group/contrib[@contrib-type='author']"),
@@ -192,8 +192,7 @@ class Section(object):
                 self.title = elem.text
 
             elif elem.tag == "sec":
-                # recursive call
-                self.content.append(self.parse(elem))
+                self.content.append(Section(elem))
 
             elif elem.tag == 'p':
                 self.content.append(Paragraph(elem))
@@ -201,6 +200,7 @@ class Section(object):
                 raise("Expecting title, sec or p, found %s", elem.tag)
 
     def get_content(self, flatten=False):
+        # TODO: investigate why first lvl is always a list and later always a tuple
         txt = []
         for ele in self.content:
             if isinstance(ele, Section):
@@ -229,36 +229,35 @@ class Body(object):
         return len(self.sections)
 
     def __repr__(self):
-        return "Body({})".format(', '.join([repr(s) for s in self.sections]))
+        return "Body({})".format(', '.join([repr(s) for s in self]))
 
     def __iter__(self):
         for ele in self.sections:
             yield ele
 
     def parse(self, stub):
-        for section in list(stub):
-            sec = Section(stub=section)
-            self.sections.append(sec)
+        for sec in list(stub):
+            self.sections.append(Section(sec))
 
     def get_structure(self, main_sections=False):
         if main_sections is True:
-            sections = [ele.title for ele in self.sections]
+            sections = [ele.title for ele in self]
         else:
-            sections = [(ele.title, ele.get_titles()) for ele in self.sections]
+            sections = [(ele.title, ele.get_titles()) for ele in self]
         return sections
 
-    def get_flat_body(self, sections=None):
+    def get_flat(self, sections=None):
         bd = []
-        for sec in self.sections:
+        for sec in self:
             if sections is None or (isinstance(sections, list) and sec.title in sections):
                 bd.extend(sec.get_content(flatten=True))
         return bd
 
-    def get_nested_body(self, main_sections=False, sections=None):
+    def get_nested(self, main_sections=False, sections=None):
         if main_sections is True:
-            secs = [(sec.title, " ".join(sec.get_content(flatten=True))) for sec in self.sections]
+            secs = [(sec.title, " ".join(sec.get_content(flatten=True))) for sec in self]
         else:
-            secs = [(sec.title, sec.get_content()) for sec in self.sections]
+            secs = [(sec.title, sec.get_content()) for sec in self]
 
         if sections is not None:
             secs = [e for e in secs if e[0] in sections]
@@ -309,10 +308,10 @@ class Article(object):
                 pass
 
     def get_simple_text(self):
-        return " ".join(self.body.get_flat_body())
+        return " ".join(self.body.get_flat())
 
     def get_nested_text(self, main_sections=False):
-        return self.body.get_nested_body(main_sections=main_sections)
+        return self.body.get_nested(main_sections=main_sections)
 
     def get_body_structure(self, main_sections=False):
         return self.body.get_structure(main_sections=main_sections)
