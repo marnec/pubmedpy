@@ -1,9 +1,10 @@
-```
-from urllib import request
-from parse_article import iter_articles, parse_article
-request.urlretrieve('ftp://server/path/to/file', 'file')
+I didn't like the other packages to parse xml articles so I wrote one.
 
-for article in iter_articles("http://europepmc.org/ftp/oa/PMC1240577_PMC1474428.xml.gz"):
+Will update API and README.
+
+
+```
+for article in iter_articles("PMC1240577_PMC1474428.xml.gz"):
     print(parse_article(article))
     
     break
