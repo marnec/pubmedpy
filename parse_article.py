@@ -1,4 +1,13 @@
 import xml.etree.ElementTree as et
+# from urllib import request
+# request.urlretrieve('ftp://server/path/to/file', 'file')
+
+
+class Author(object):
+    def __init__(self):
+        self.name = None
+        self.affiliations = None
+        self.email = None
 
 
 class Metadata(object):
@@ -159,6 +168,14 @@ def parse_section(section):
 
     return sec
 
+def parse_authors(contrib_group):
+    authors = []
+    for contributor in list(contrib_group):
+        author = Author()
+
+
+
+
 
 def parse_front(front):
     jrn = Journal()
@@ -169,6 +186,7 @@ def parse_front(front):
     meta.pmid = front.find("article-meta/article-id[@pub-id-type=\"pmcid\"]").text
     meta.doi = front.find("article-meta/article-id[@pub-id-type=\"doi\"]").text
     meta.title = front.find("article-meta/title-group/article-title").text
+    parse_authors(front.find("article-meta/contrib-group/"))
 
     return jrn, meta
 
@@ -179,7 +197,7 @@ def parse_article(xml):
     elif isinstance(xml, et.Element):
         xml_tree = xml
     else:
-        raise ValueError("Expecting str or ET.Element, instead I got (%s)", type(xml))
+        raise ValueError("Expecting str or ET.Element, got (%s)", type(xml))
 
     art = Article()
     art.article_type = xml_tree.attrib.get("article-type")
