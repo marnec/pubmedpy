@@ -200,7 +200,7 @@ class Section(object):
                 raise("Expecting title, sec or p, found %s", elem.tag)
 
     def get_content(self, flatten=False):
-        # TODO: investigate why first lvl is always a list and later always a tuple
+        # TODO: investigate why first lvl is always a list deeper lvls are always tuples
         txt = []
         for ele in self.content:
             if isinstance(ele, Section):
