@@ -5,7 +5,7 @@ Will update API and README.
 
 ```
 for article in iter_articles("PMC1240577_PMC1474428.xml.gz"):
-    print(parse_article(article))
+    print(article)
     
     break
 ```
