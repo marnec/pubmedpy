@@ -1,6 +1,37 @@
 import xml.etree.ElementTree as et
+from collections import UserList
 # from urllib import request
 # request.urlretrieve('ftp://server/path/to/file', 'file')
+
+
+class Name(object):
+    def __init__(self):
+        self.surname = None
+        self.given_names = None
+        self.prefix = None
+        self.suffix = None
+
+    def __iter__(self):
+        for n in [self.prefix, self.given_names, self.surname, self.suffix]:
+            yield n
+
+    def __repr__(self):
+        return "Name(pre='{}' givenn='{}' surn='{}' suf='{}')".format(*self)
+
+    def __str__(self):
+        return ' '.join(n for n in self if n is not None)
+
+    def parse(self, stub):
+        if stub:
+            surname = stub.find("surname")
+            gname = stub.find("given-names")
+            prefix = stub.find("prefix")
+            suffix = stub.find("suffix")
+
+            self.surname = surname.text if surname is not None else None
+            self.given_names = gname.text if gname is not None else None
+            self.prefix = prefix.text if prefix is not None else None
+            self.suffix = suffix.text if suffix is not None else None
 
 
 class Author(object):
@@ -9,12 +40,26 @@ class Author(object):
         self.affiliations = None
         self.email = None
 
+    def __repr__(self):
+        author_repr = "Author("
+        if self.name:
+            author_repr += "name={}".format(repr(self.name))
+        if self.email is not None:
+            author_repr += " email={}".format(self.email)
+        if self.affiliations is not None:
+            author_repr += " affils={}".format(self.affiliations)
+        author_repr += ')'
+
+        return author_repr
+
+
 
 class Metadata(object):
     def __init__(self):
         self.pmid = None
         self.title = None
         self.doi = None
+        self.authors = None
 
     def __repr__(self):
         return "Metadata(pmid='{}', title='{}', doi='{}')".format(self.pmid, self.title, self.doi)
@@ -168,10 +213,35 @@ def parse_section(section):
 
     return sec
 
-def parse_authors(contrib_group):
+
+def parse_authors(contrib_group, aff):
     authors = []
-    for contributor in list(contrib_group):
+    affiliations = {}
+
+    for affil in aff:
+        # TODO: find a way to parse affil text (etree doesn't catch it apparently)
+        geo = affil.text
+        aid = affil.get('id')
+        inst = ' '.join(e.text for e in affil.findall("institution-wrap/institution") if e is not None)
+        affiliations[aid] = inst
+
+    for contrib in contrib_group:
         author = Author()
+        # name
+        author.name = Name()
+        author.name.parse(contrib.find("name"))
+        # email
+        email = contrib.find("address/email")
+        author.email = email.text if email is not None else None
+        # affiliations
+
+        affils = contrib.findall("xref[@ref-type='aff']")
+        author.affiliations = [affiliations.get(aff.get("rid")) for aff in affils if aff is not None]
+        authors.append(author)
+
+    return authors
+
+
 
 
 
@@ -186,7 +256,8 @@ def parse_front(front):
     meta.pmid = front.find("article-meta/article-id[@pub-id-type=\"pmcid\"]").text
     meta.doi = front.find("article-meta/article-id[@pub-id-type=\"doi\"]").text
     meta.title = front.find("article-meta/title-group/article-title").text
-    parse_authors(front.find("article-meta/contrib-group/"))
+    meta.authors = parse_authors(front.findall("article-meta/contrib-group/contrib[@contrib-type='author']"),
+                            front.findall("article-meta/contrib-group/aff"))
 
     return jrn, meta
 
