@@ -106,17 +106,37 @@ class Metadata(object):
         affiliations = {}
 
         for affil in aff:
-            # TODO: find a way to parse affil text (etree doesn't catch it apparently)
-            # geo = affil.text
-            aid = affil.get('id')
-            inst = ' '.join(e.text for e in affil.findall("institution-wrap/institution") if e is not None)
-            affiliations[aid] = inst
+            aff = Affiliation(affil)
+            affiliations[aff.aid] = aff
 
         for contrib in contrib_group:
             author = Author(contrib, affiliations)
             authors.append(author)
 
         return authors
+
+
+class Affiliation(object):
+    def __init__(self, stub=None):
+        self.institution = None
+        self.aid = None
+
+        if stub is not None:
+            self.parse(stub)
+
+    def __repr__(self):
+        return "Affiliation(id='{}' institution='{}')".format(self.aid, ' '.join(self.institution))
+
+    def parse(self, stub):
+        self.aid = stub.get('id')
+
+        inst_wrap = stub.find("institution-wrap")
+        if inst_wrap is not None:
+            self.institution = [e.text for e in inst_wrap.findall("institution") if e is not None]
+
+            geo = inst_wrap.tail
+            if geo is not None:
+                self.institution.append(geo)
 
 
 class Journal(object):
@@ -200,19 +220,20 @@ class Section(object):
                 raise("Expecting title, sec or p, found %s", elem.tag)
 
     def get_content(self, flatten=False):
-        # TODO: investigate why first lvl is always a list deeper lvls are always tuples
+
         txt = []
         for ele in self.content:
             if isinstance(ele, Section):
                 if flatten is True:
+                    # TODO: resolve issue where mutable return value of self.get_content affects extend
                     txt.extend(ele.get_content(flatten=flatten))
                 else:
-                    txt.append((ele.title, ele.get_content(flatten=flatten)[0]))
+                    txt.append((ele.title, ele.get_content(flatten=flatten)))
             elif isinstance(ele, Paragraph):
                 txt.append(ele.text)
             else:
                 raise("I was expecting Section or Paragraph, got %s", type(ele))
-        return txt
+        return txt if len(txt) > 1 else txt[0]
 
     def get_titles(self):
         return [ele.title for ele in self.content if isinstance(ele, Section)]
@@ -250,6 +271,7 @@ class Body(object):
         bd = []
         for sec in self:
             if sections is None or (isinstance(sections, list) and sec.title in sections):
+                # TODO: resolve issue where mutable return value of sec.get_content affects extend
                 bd.extend(sec.get_content(flatten=True))
         return bd
 
@@ -315,3 +337,6 @@ class Article(object):
 
     def get_body_structure(self, main_sections=False):
         return self.body.get_structure(main_sections=main_sections)
+
+    def get_authors(self):
+        return self.front.article_meta.authors
