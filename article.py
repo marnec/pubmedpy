@@ -233,7 +233,7 @@ class Section(object):
                 txt.append(ele.text)
             else:
                 raise("I was expecting Section or Paragraph, got %s", type(ele))
-        return txt if len(txt) > 1 else txt[0]
+        return txt
 
     def get_titles(self):
         return [ele.title for ele in self.content if isinstance(ele, Section)]
@@ -273,6 +273,7 @@ class Body(object):
             if sections is None or (isinstance(sections, list) and sec.title in sections):
                 # TODO: resolve issue where mutable return value of sec.get_content affects extend
                 bd.extend(sec.get_content(flatten=True))
+        print(bd)
         return bd
 
     def get_nested(self, main_sections=False, sections=None):
@@ -330,7 +331,7 @@ class Article(object):
                 pass
 
     def get_simple_text(self):
-        return " ".join(self.body.get_flat())
+        return "\n".join(self.body.get_flat())
 
     def get_nested_text(self, main_sections=False):
         return self.body.get_nested(main_sections=main_sections)
