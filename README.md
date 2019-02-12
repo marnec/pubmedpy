@@ -40,6 +40,8 @@ article.get_authors()
 
 Get simplified full text
 ```
+article.get_simple_text()
+
 'Lung disorders have significant morbidity and mortality rates worldwide, both in humans and in animals. Acute respiratory distress syndrome 
 (ARDS) is one of the leading causes of respiratory failure around the world. Although early diagnosis, timely medical care, and 
 treatment may lead to improvement of 
@@ -51,6 +53,8 @@ Additional file 1:Additional methods, Figures S1–S6 and Tables S1–S7. (DOCX 
 
 Get nested body
 ```
+article.get_nested_body()
+
 [('Background',
   ['Lung disorders have significant morbidity and mortality rates worldwide, both in humans and in animals. Acute respiratory distress syndrome (ARDS) is one of the leading causes of respiratory failure around the world. Although early diagnosis, timely medical care, and treatment may lead to improvement of symptoms, the signs return after a period of time. Causes of ARDS are different. It can be caused by direct or indirect damage to the lung epithelium. ARDS is described by severe hypoxemia, decreased pulmonary compliance, diffuse alveolar damage, and bilateral pulmonary infiltrates after cardiac edema [1, 2] and confirmed by a combination of clinical, physiological, and chest imaging parameters. Pulmonary inflammation with disruption of the mechanism of the alveolar–capillary barrier is an important direct cause of ARDS [3, 4]. Therapeutic approaches include mechanical ventilation, neuromuscular blocking agents, fluid management, drug and antimicrobial therapy, and prone positioning [3, 5, 6]. These therapeutic strategies have a supportive role and cannot prevent the progression of the disease [7–10]. The ultimate approach is lung transplant, but it has many problems for recipient patients such as lack of suitable donors and the use of immunosuppressive drugs over a lifetime to prevent rejection of the transplant [11]. Therefore, the recognition of new therapeutic approaches such as stromal cell therapy is essential [12]. MSCs confer immunomodulatory and anti-inflammatory effects, enhance bacterial clearance, reduce cell injury and death, and are angiogenic [5, 13]. The mechanism of the MSCs’ effects includes several pathways mediated through differentiation, proliferation, soluble intermediate release, extracellular vesicles, transfer of organelles, and direct cell-to-cell contact, which decrease activation of inflammatory cell secretion of paracrine mediators [14, 15]. Recent studies have shown positive effects of MSC-based therapy for ARDS. Induction of inflammation by the LPS of Escherichia coli O55:B5 is one of the best and simplest methods for making an experimental model of ARDS. Although the ARDS animal models cannot reflect human ARDS accurately, the rabbit model is similar and hence suitable for translating the results from pilot to clinical conditions [16]. Anatomical, physiological, genetic, and biochemical similarity to humans simulates human lung disease, and as the rabbit is easy to handle, it is considered as a suitable model for pulmonary research [17, 18]. Moreover, the rabbit serves as an excellent platform for treatment based on stromal cells [19, 20]. Thus, in this study, the rabbit was used as a model for causing ARDS, and then it was treated with stromal cells. The aim of this study was evaluation of therapeutic potential intrapulmonary administration of BM-MSCs in an experimental model of E. coli LPS-induced ARDS in the rabbit.']),
  ('Methods',
