@@ -25,46 +25,77 @@ def iter_articles(xml_file):
 
 def reporthook(count, block_size, total_size):
     global start_time
+
     if count == 0:
         start_time = time.time()
         return
+
     duration = time.time() - start_time
     progress_size = int(count * block_size)
     speed = int(progress_size / (1024 * duration))
-    percent = min(int(count*block_size*100/total_size),100)
-    sys.stdout.write("\r...%d%%, %d MB, %d KB/s, %d seconds passed" %
-                    (percent, progress_size / (1024 * 1024), speed, duration))
+    percent = min(int(count*block_size*100/total_size), 100)
+
+    sys.stdout.write("\r...{:.1f}%, {:.1f} MB, {:.2f} KB/s, {} seconds passed".format(
+        percent, progress_size / (1024 * 1024), speed, duration))
+
     sys.stdout.flush()
 
 
-def bulk_download_articles(db, n=None):
-    oa_ftp_dbs = {'epmc', 'pmc'}
+def bulk_download_articles(db, n=None, use=None):
+    db_opts = {"epmc", "pmc"}
+    use_opts = {"comm", "non_comm", "any"}
 
-    if db not in oa_ftp_dbs:
-        raise ValueError('Accepted values for db {}; got {}'.format(oa_ftp_dbs, db))
+    if db not in db_opts:
+        raise ValueError("Accepted values for db {}; got {}".format(db_opts, db))
 
-    elif db == 'epmc':
+    if db == "pmc" and use is None:
+        raise ValueError("Argument 'use' must be not None when db=pmc")
+
+    if use not in use_opts:
+        raise ValueError("Accepted values for use {}; got {}".format(use_opts, use))
+
+    if db == "epmc":
         _epmc_ftp_bulkdownload(n)
+
+    elif db == "pmc":
+        _pmc_ftp_bulkdownload(n, use)
 
 
 def _epmc_ftp_bulkdownload(n):
-    baseurl = 'https://europepmc.org/ftp/oa'
+    baseurl = 'https://europepmc.org/ftp/oa/'
     lines = request.urlopen(baseurl).read().decode("utf-8").split('\n')
     lines = [l.split()[4:] for l in lines if "xml.gz" in l]
-    size, *date, links = zip(*lines)
-    size = list(map(lambda s: "{:.1f}MB".format(int(s) / 1000000), size))
-    date = list(map(" ".join, zip(*date[:-1])))
-    links = list(map(lambda s: "{}/{}".format(baseurl, s.split('>')[0][6:-1]), links))
+    size, *date, filenames = zip(*lines)
+    # size = list(map(lambda s: "{:.1f}MB".format(int(s) / 1000000), size))
+    # date = list(map(" ".join, zip(*date[:-1])))
+    filenames = list(map(lambda s: s.split('>')[0][6:-1], filenames))
 
-    for i, link in enumerate(links):
+    for i, fname in enumerate(filenames):
         if n is None or (n is not None and i < n):
-            request.urlretrieve(links[0], 'file', reporthook)
+            link = baseurl + fname
+            request.urlretrieve(link, fname, reporthook)
         else:
             break
 
 
+def _pmc_ftp_bulkdownload(n, use):
+    baseurl = 'ftp://ftp.ncbi.nlm.nih.gov/pub/pmc/oa_bulk/'
+    lines = request.urlopen(baseurl).read().decode("utf-8").split('\n')
+    lines = [l.split()[4:] for l in lines if "xml.tar.gz" in l]
+    size, *date, filenames = zip(*lines)
+    # size = list(map(lambda s: "{:.1f}MB".format(int(s) / 1000000), size))
+    # date = list(map(" ".join, zip(*date[:-1])))
 
-#TODO: investigate 'utf-8' codec can't decode byte 0x8b in position 1: invalid start byte
+    for i, fname in enumerate(filenames):
+        if n is None or (n is not None and i < n):
+            if use == "any" or use in fname:
+                link = baseurl + fname
+                request.urlretrieve(link, fname, reporthook)
+        else:
+            break
+
+
+# TODO: investigate 'utf-8' codec can't decode byte 0x8b in position 1: invalid start byte
 def file_type(filename):
     compression_signatures = {
         "\x1f\x8b\x08": "gz",
