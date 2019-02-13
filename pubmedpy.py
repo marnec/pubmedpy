@@ -5,6 +5,9 @@ import sys
 import time
 import gzip
 import os
+import re
+from math import log10, ceil
+import warnings
 
 
 def iter_articles(xml_file):
@@ -24,6 +27,7 @@ def iter_articles(xml_file):
 
 
 def reporthook(count, block_size, total_size):
+    pseudocount = 0.000001
     global start_time
 
     if count == 0:
@@ -32,10 +36,10 @@ def reporthook(count, block_size, total_size):
 
     duration = time.time() - start_time
     progress_size = int(count * block_size)
-    speed = int(progress_size / (1024 * duration))
+    speed = int(progress_size / (1024 * (duration + pseudocount)))
     percent = min(int(count*block_size*100/total_size), 100)
 
-    sys.stdout.write("\r...{:.1f}%, {:.1f} MB, {:.2f} KB/s, {} seconds passed".format(
+    sys.stdout.write("\r{}%, {:.1f} MB, {} KB/s, {:.0f} seconds passed".format(
         percent, progress_size / (1024 * 1024), speed, duration))
 
     sys.stdout.flush()
@@ -45,20 +49,23 @@ def bulk_download_articles(db, n=None, use=None):
     db_opts = {"epmc", "pmc"}
     use_opts = {"comm", "non_comm", "any"}
 
+    db = db.lower()
+    use = use.lower() if isinstance(use, str) else use
+
     if db not in db_opts:
         raise ValueError("Accepted values for db {}; got {}".format(db_opts, db))
 
-    if db == "pmc" and use is None:
-        raise ValueError("Argument 'use' must be not None when db=pmc")
-
-    if use not in use_opts:
-        raise ValueError("Accepted values for use {}; got {}".format(use_opts, use))
+    if db == "pmc":
+        if use not in use_opts:
+            raise ValueError("Accepted values for use {}; got {}".format(use_opts, use))
+        else:
+            _pmc_ftp_bulkdownload(n, use)
 
     if db == "epmc":
-        _epmc_ftp_bulkdownload(n)
-
-    elif db == "pmc":
-        _pmc_ftp_bulkdownload(n, use)
+        if use is not None:
+            warnings.warn("Argument 'use' has no effect when db=epmc")
+        else:
+            _epmc_ftp_bulkdownload(n)
 
 
 def _epmc_ftp_bulkdownload(n):
@@ -88,7 +95,7 @@ def _pmc_ftp_bulkdownload(n, use):
 
     for i, fname in enumerate(filenames):
         if n is None or (n is not None and i < n):
-            if use == "any" or use in fname:
+            if use == "any" or re.match(use, fname):
                 link = baseurl + fname
                 request.urlretrieve(link, fname, reporthook)
         else:

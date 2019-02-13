@@ -7,11 +7,28 @@ Will update API and README.
 Python 3+
 
 ## Usage
-Can iterate over collections of multiple articles:
+
+Bulk download OA articles over FTP services:
+from PMC
+```pythonstub
+from pubmedpy import bulk_download_articles
+
+bulk_download_articles("pmc", use="non_comm")
+
+'1%, 21.1 MB, 2429 KB/s, 9 seconds passed'
+```
+from Europe PMC
+```pythonstub
+from pubmedpy import bulk_download_articles
+
+bulk_download_articles("epmc")
+
+'1%, 21.1 MB, 2429 KB/s, 9 seconds passed'
+```
 
 Detect main sections of article 
-```
-from parse_article import iter_articles
+```pythonstub
+from pubmedpy import iter_articles
 for article in iter_articles("examples/example0.xml"):
     article.get_body_structure(main_sections=True)
     
@@ -19,14 +36,14 @@ for article in iter_articles("examples/example0.xml"):
 ```
 
 Detect complete body structure of article:
-```
+```pythonstub
 article.get_body_structure()
     
 [('Background', []), ('Methods', ['Isolation, primary culture, and expansion of BM-MSCs', 'Experimental design', 'Analyses', 'Imaging', 'Sampling', 'Histopathology', 'Statistical analysis']), ('Results', ['Characterization of BMSCs', 'Confirmation of ARDS experimental model', 'Clinical and paraclinical findings after transplant of BM-MSCs in an experimental model of ARDS', 'MSCs cause blood cells and BAL cells to balance', 'Regulation of arterial blood gases with MSCs', 'Effect of MSCs on arterial blood electrolytes', 'Reduced levels of proinflammatory cytokines and increase in anti-inflammatory cytokine by MSCs', 'Imaging findings', 'Echocardiography findings', 'Findings of gross pathology and histopathology']), ('Discussion', []), ('Conclusions', []), ('Additional file', [None])]
 ```
 
 Get authors
-```
+```pythonstub
 article.get_authors()
 
 [Author(name=Name(pre='None' givenn='Mohammad Reza' surn='Mokhber Dezfouli' suf='None') email=mokhberd@ut.ac.ir affils=[Affiliation(id='Aff1' institution='Department of Internal Medicine, Faculty of Veterinary Medicine,  University of Tehran,  Tehran, Iran '), Affiliation(id='Aff3' institution='Institute of Biomedical Research,  University of Tehran,  Tehran, Iran ')]),
@@ -39,7 +56,7 @@ article.get_authors()
 ```
 
 Get simplified full text
-```
+```pythonstub
 article.get_simple_text()
 
 'Lung disorders have significant morbidity and mortality rates worldwide, both in humans and in animals. Acute respiratory distress syndrome 
@@ -52,7 +69,7 @@ Additional file 1:Additional methods, Figures S1–S6 and Tables S1–S7. (DOCX 
 ```
 
 Get nested body
-```
+```pythonstub
 article.get_nested_body()
 
 [('Background',
