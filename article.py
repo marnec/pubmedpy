@@ -1,5 +1,6 @@
 import xml.etree.ElementTree as et
-
+import pandas
+import sys
 # TODO: find out how to call son method instead of placeholder
 # class XmlTag(object):
 #     def __init__(self, stub=None):
@@ -9,6 +10,22 @@ import xml.etree.ElementTree as et
 #
 #     def parse(self, stub):
 #         pass
+
+class Table(object):
+    def __init__(self, stub=None):
+        self.content = None
+
+        if stub is not None:
+            self.parse(stub)
+
+    def __repr__(self):
+        return "\n".join(repr(df) for df in self.content)
+
+    def parse(self, stub):
+        # TODO: find an alternative for pure python implementation (maybe)
+        self.content = []
+        for table in stub.findall("table"):
+            self.content.append(pandas.read_html(et.tostring(table)))
 
 
 class Name(object):
@@ -93,8 +110,13 @@ class Metadata(object):
                                                                               self.authors)
 
     def parse(self, stub):
-        self.pmid = stub.find("article-id[@pub-id-type='pmcid']").text
-        self.doi = stub.find("article-id[@pub-id-type='doi']").text
+        pmid = stub.find("article-id[@pub-id-type='pmid']")
+        pmcid = stub.find("article-id[@pub-id-type='pmcid']")
+        doi = stub.find("article-id[@pub-id-type='doi']")
+        self.pmid = pmid.text if pmid is not None else None
+        self.pmcid = pmcid.text if pmcid is not None else None
+        self.doi = doi.text if doi is not None else None
+
         self.title = stub.find("title-group/article-title").text
         self.authors = self._parse_authors(
             stub.findall("contrib-group/contrib[@contrib-type='author']"),
@@ -151,7 +173,8 @@ class Journal(object):
         return "Journal(id='{}', title='{}')".format(self.jid, self.title)
 
     def parse(self, stub):
-        self.title = stub.find("journal-title-group/journal-title").text
+        title = stub.find("journal-title-group/journal-title")
+        self.title = title.text if title else None
         self.jid = stub.find("journal-id").text
 
 
@@ -216,8 +239,11 @@ class Section(object):
 
             elif elem.tag == 'p':
                 self.content.append(Paragraph(elem))
+            elif elem.tag == "table-wrap":
+                self.content.append(Table(elem))
+                print(Table(elem))
             else:
-                raise("Expecting title, sec or p, found %s", elem.tag)
+                raise ValueError("Expecting title, sec or p, found {}".format(elem.tag))
 
     def get_content(self, flatten=False):
 
@@ -273,7 +299,6 @@ class Body(object):
             if sections is None or (isinstance(sections, list) and sec.title in sections):
                 # TODO: resolve issue where mutable return value of sec.get_content affects extend
                 bd.extend(sec.get_content(flatten=True))
-        print(bd)
         return bd
 
     def get_nested(self, main_sections=False, sections=None):

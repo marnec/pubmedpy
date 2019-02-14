@@ -5,6 +5,7 @@ Will update API and README.
 
 ## Requirements
 Python 3+
+pandas
 
 ## Usage
 

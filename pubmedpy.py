@@ -45,7 +45,7 @@ def reporthook(count, block_size, total_size):
     sys.stdout.flush()
 
 
-def bulk_download_articles(db, n=None, use=None):
+def bulk_download_articles(db, n=None, use=None, download_dir=None):
     db_opts = {"epmc", "pmc"}
     use_opts = {"comm", "non_comm", "any"}
 
@@ -59,16 +59,16 @@ def bulk_download_articles(db, n=None, use=None):
         if use not in use_opts:
             raise ValueError("Accepted values for use {}; got {}".format(use_opts, use))
         else:
-            _pmc_ftp_bulkdownload(n, use)
+            _pmc_ftp_bulkdownload(n, use, download_dir)
 
     if db == "epmc":
         if use is not None:
             warnings.warn("Argument 'use' has no effect when db=epmc")
         else:
-            _epmc_ftp_bulkdownload(n)
+            _epmc_ftp_bulkdownload(n, download_dir)
 
 
-def _epmc_ftp_bulkdownload(n):
+def _epmc_ftp_bulkdownload(n, ddir=None):
     baseurl = 'https://europepmc.org/ftp/oa/'
     lines = request.urlopen(baseurl).read().decode("utf-8").split('\n')
     lines = [l.split()[4:] for l in lines if "xml.gz" in l]
@@ -80,12 +80,13 @@ def _epmc_ftp_bulkdownload(n):
     for i, fname in enumerate(filenames):
         if n is None or (n is not None and i < n):
             link = baseurl + fname
+            fname = os.path.join(ddir, fname) if ddir is not None else fname
             request.urlretrieve(link, fname, reporthook)
         else:
             break
 
 
-def _pmc_ftp_bulkdownload(n, use):
+def _pmc_ftp_bulkdownload(n, use, ddir=None):
     baseurl = 'ftp://ftp.ncbi.nlm.nih.gov/pub/pmc/oa_bulk/'
     lines = request.urlopen(baseurl).read().decode("utf-8").split('\n')
     lines = [l.split()[4:] for l in lines if "xml.tar.gz" in l]
@@ -97,6 +98,7 @@ def _pmc_ftp_bulkdownload(n, use):
         if n is None or (n is not None and i < n):
             if use == "any" or re.match(use, fname):
                 link = baseurl + fname
+                fname = os.path.join(ddir, fname) if ddir is not None else fname
                 request.urlretrieve(link, fname, reporthook)
         else:
             break
