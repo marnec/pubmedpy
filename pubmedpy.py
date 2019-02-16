@@ -6,7 +6,6 @@ import time
 import gzip
 import os
 import re
-from math import log10, ceil
 import warnings
 
 

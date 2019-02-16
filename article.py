@@ -1,6 +1,6 @@
 import xml.etree.ElementTree as et
-import pandas
 import sys
+
 # TODO: find out how to call son method instead of placeholder
 # class XmlTag(object):
 #     def __init__(self, stub=None):
@@ -11,21 +11,145 @@ import sys
 #     def parse(self, stub):
 #         pass
 
-class Table(object):
+class Graphic(object):
     def __init__(self, stub=None):
-        self.content = None
+        self.obj_id = None
+        self.label = None
+        self.caption = None
+        self.href = None
+        self.graphics = None
+
+        if stub is not None:
+            self.parse(stub)
+
+    def parse(self, stub):
+        label = stub.find("label")
+        self.label = label.text if label else None
+        caption = stub.find("caption")
+        self.caption = caption.text if caption else None
+
+        self.href = stub.get("ns0:href")
+
+
+class Figure(object):
+    def __init__(self, stub=None):
+        self.label = None
+        self.caption = None
+        self.graphics = None
+        self.namespace = None
+
+        if stub is not None:
+            self.parse(stub)
+
+    def parse(self, stub):
+        label = stub.find("label")
+        self.label = label.text if label else None
+        caption = stub.find("caption")
+        self.caption = caption.text if caption else None
+        self.namespace = stub.get("xmlns:ns0")
+
+        self.graphics = []
+        for graphic in stub.findall("graphic"):
+            self.graphics.append(Graphic(graphic))
+
+
+class TableGroup(object):
+    def __init__(self, stub=None):
+        self.label = None
+        self.caption = None
+        self.tables = None
 
         if stub is not None:
             self.parse(stub)
 
     def __repr__(self):
-        return "\n".join(repr(df) for df in self.content)
+        return "TableGroup(label={}, caption={}\n{})".format(self.label, self.caption, "\n".join(repr(t) for t in self.tables))
 
     def parse(self, stub):
-        # TODO: find an alternative for pure python implementation (maybe)
-        self.content = []
+        label = stub.find("label")
+        self.label = label.text if label else None
+        caption = stub.find("caption")
+        self.caption = caption.text if caption else None
+
+        self.tables = []
+        for table in stub.findall("table-wrap"):
+            self.tables.append(TableWrap(table))
+
+
+class TableWrap(object):
+    def __init__(self, stub=None):
+        self.label = None
+        self.caption = None
+        self.tables = None
+        self.footer = None
+
+        if stub is not None:
+            self.parse(stub)
+
+    def __repr__(self):
+        return "TableWrap(label={}, caption={}\n{})".format(self.label, self.caption, "\n".join(repr(t) for t in self.tables))
+
+    def parse(self, stub):
+        label = stub.find("label")
+        self.label = label.text if label else None
+        caption = stub.find("caption")
+        self.caption = caption.text if caption else None
+        footer = stub.find("table-wrap-foot")
+        self.footer = footer.text if footer else None
+
+        self.tables = []
         for table in stub.findall("table"):
-            self.content.append(pandas.read_html(et.tostring(table)))
+            self.tables.append(Table(table))
+
+
+class Table(object):
+    def __init__(self, stub=None):
+        self.content = None
+        self.caption = None
+
+        if stub is not None:
+            self.parse(stub)
+
+    def __repr__(self):
+        rpr = []
+
+        for row in self.content:
+            col_widths = map(lambda t: len(max(t, key=len)), zip(*self.content))
+            rpr.append("  ".join("{:<{r}}".format(cell, r=align) for cell, align in zip(row, col_widths)))
+
+        return "Table(caption='{}'\n{})".format(self.caption, "\n".join(rpr))
+
+    def parse(self, stub):
+        # parse caption
+        caption = stub.find("caption")
+        self.caption = caption.text if caption else None
+        # parse table
+        self.content = []
+        rowspans = {}
+        contents = {}
+
+        for elem in stub.iter(tag="tr"):
+            row = []
+            cell_index = 0
+
+            for cell in list(elem):
+                cell_text = ''.join(cell.itertext()).strip()
+
+                rowspan = cell.get("rowspan")
+                rowspans[cell_index] = int(rowspan) if rowspan else (rowspans.get(cell_index, 0))
+                if rowspan is not None:
+                    contents[cell_index] = cell_text
+
+                if rowspan is None and rowspans[cell_index] > 0:
+                    row.append(contents[cell_index])
+                    rowspans[cell_index] -= 1
+
+                colspan = cell.get("colspan")
+                colspan = int(colspan) if colspan else 1
+                row.extend([''.join(cell_text)]*colspan)
+
+                cell_index += colspan
+            self.content.append(row)
 
 
 class Name(object):
@@ -233,15 +357,20 @@ class Section(object):
         for elem in list(stub):
             if elem.tag == "title":
                 self.title = elem.text
-
             elif elem.tag == "sec":
                 self.content.append(Section(elem))
-
             elif elem.tag == 'p':
                 self.content.append(Paragraph(elem))
             elif elem.tag == "table-wrap":
-                self.content.append(Table(elem))
-                print(Table(elem))
+                self.content.append(TableWrap(elem))
+            elif elem.tag == "fig":
+                self.content.append(Figure(elem))
+            elif elem.tag == "graphic":
+                self.content.append(Graphic(elem))
+            elif elem.tag == "supplementary-material":
+                pass
+            elif elem.tag == "italic":
+                pass
             else:
                 raise ValueError("Expecting title, sec or p, found {}".format(elem.tag))
 
