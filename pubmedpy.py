@@ -9,6 +9,8 @@ import re
 import warnings
 
 
+
+
 def iter_articles(xml_file):
     ext = os.path.splitext(xml_file)[-1]
     if ext == ".xml":

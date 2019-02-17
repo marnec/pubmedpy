@@ -1,6 +1,7 @@
 import xml.etree.ElementTree as et
 import sys
 
+
 # TODO: find out how to call son method instead of placeholder
 # class XmlTag(object):
 #     def __init__(self, stub=None):
@@ -8,16 +9,16 @@ import sys
 #         if stub is not None:
 #             self.parse(stub)
 #
+#     @classmethod
 #     def parse(self, stub):
 #         pass
 
-class Graphic(object):
+
+class SupplementaryMaterial(object):
     def __init__(self, stub=None):
-        self.obj_id = None
         self.label = None
         self.caption = None
-        self.href = None
-        self.graphics = None
+        self.content = None
 
         if stub is not None:
             self.parse(stub)
@@ -26,9 +27,34 @@ class Graphic(object):
         label = stub.find("label")
         self.label = label.text if label else None
         caption = stub.find("caption")
-        self.caption = caption.text if caption else None
+        self.caption = "".join(caption.itertext()) if caption else None
+
+        self.content = []
+        for ele in list(stub):
+            if ele.tag not in {"caption", "label"}:
+                self.content.append(html_classes[ele.tag](ele))
+
+
+class GraphicMedia(object):
+    def __init__(self, stub=None):
+        self.obj_id = None
+        self.label = None
+        self.caption = None
+        self.href = None
+
+        if stub is not None:
+            self.parse(stub)
+
+    def parse(self, stub):
+        label = stub.find("label")
+        self.label = label.text if label else None
+        caption = stub.find("caption")
+        self.caption = "".join(caption.itertext()) if caption else None
 
         self.href = stub.get("ns0:href")
+
+    def get_content(self, flatten=None):
+        return [(self.caption, self.href)]
 
 
 class Figure(object):
@@ -50,8 +76,10 @@ class Figure(object):
 
         self.graphics = []
         for graphic in stub.findall("graphic"):
-            self.graphics.append(Graphic(graphic))
+            self.graphics.append(GraphicMedia(graphic))
 
+    def get_content(self, flatten=None):
+        return [(self.caption, self.graphics)]
 
 class TableGroup(object):
     def __init__(self, stub=None):
@@ -100,6 +128,9 @@ class TableWrap(object):
         self.tables = []
         for table in stub.findall("table"):
             self.tables.append(Table(table))
+
+    def get_content(self, flatten=None):
+        return [(self.caption, self.tables)]
 
 
 class Table(object):
@@ -228,10 +259,8 @@ class Metadata(object):
             self.parse(stub)
 
     def __repr__(self):
-        return "Metadata(pmid='{}', title='{}', doi='{}', authors={})".format(self.pmid,
-                                                                              self.title,
-                                                                              self.doi,
-                                                                              self.authors)
+        return "Metadata(pmid='{}', title='{}', doi='{}', authors={})".format(
+            self.pmid, self.title, self.doi, self.authors)
 
     def parse(self, stub):
         pmid = stub.find("article-id[@pub-id-type='pmid']")
@@ -327,6 +356,7 @@ class Front(object):
 
 class Paragraph(object):
     def __init__(self, stub=None):
+        self.title = None
         self.text = None
 
         if stub is not None:
@@ -337,6 +367,19 @@ class Paragraph(object):
 
     def parse(self, stub):
         self.text = ''.join(stub.itertext())
+
+    def get_content(self, flatten=None):
+        """
+        Mock method to comply with paragraphs that are direct children of Body.
+
+        Using this method Body.get_nested() and Body.get_flat() can retrieve text within
+        paragraphs that are direct children of Body without the need of handling specific
+        Types.
+
+        :param flatten:
+        :return:
+        """
+        return [(None, self.text)]
 
 
 class Section(object):
@@ -354,40 +397,49 @@ class Section(object):
         return len(self.content)
 
     def parse(self, stub):
-        for elem in list(stub):
+        for i, elem in enumerate(list(stub)):
             if elem.tag == "title":
-                self.title = elem.text
-            elif elem.tag == "sec":
-                self.content.append(Section(elem))
-            elif elem.tag == 'p':
-                self.content.append(Paragraph(elem))
-            elif elem.tag == "table-wrap":
-                self.content.append(TableWrap(elem))
-            elif elem.tag == "fig":
-                self.content.append(Figure(elem))
-            elif elem.tag == "graphic":
-                self.content.append(Graphic(elem))
-            elif elem.tag == "supplementary-material":
-                pass
-            elif elem.tag == "italic":
-                pass
+                self.title = "".join(elem.itertext())
             else:
-                raise ValueError("Expecting title, sec or p, found {}".format(elem.tag))
+                try:
+                    self.content.append(html_classes[elem.tag](elem))
+                except KeyError:
+                    if elem.tag == "italic":
+                        pass
+                    else:
+                        print(et.tostring(stub))
+                        print(i, et.tostring(elem))
+                        sys.exit()
+            # elif elem.tag == "sec":
+            #     self.content.append(Section(elem))
+            # elif elem.tag == 'p':
+            #     self.content.append(Paragraph(elem))
+            # elif elem.tag == "table-wrap":
+            #     self.content.append(TableWrap(elem))
+            # elif elem.tag == "table-wrap-group":
+            #     self.content.append(TableGroup(elem))
+            # elif elem.tag == "fig":
+            #     self.content.append(Figure(elem))
+            # elif elem.tag == "graphic":
+            #     self.content.append(Graphic(elem))
+            # elif elem.tag == "supplementary-material":
+            #     pass
+            # elif elem.tag == "italic":
+            #     pass
 
     def get_content(self, flatten=False):
-
+        # TODO: make all types compliant with get_content
         txt = []
         for ele in self.content:
             if isinstance(ele, Section):
                 if flatten is True:
-                    # TODO: resolve issue where mutable return value of self.get_content affects extend
                     txt.extend(ele.get_content(flatten=flatten))
                 else:
                     txt.append((ele.title, ele.get_content(flatten=flatten)))
-            elif isinstance(ele, Paragraph):
-                txt.append(ele.text)
+            elif isinstance(ele, (Paragraph, TableWrap, Figure, GraphicMedia)):
+                txt.append(ele.get_content())
             else:
-                raise("I was expecting Section or Paragraph, got %s", type(ele))
+                raise ValueError("I was expecting Section or Paragraph, got %s", type(ele))
         return txt
 
     def get_titles(self):
@@ -412,21 +464,20 @@ class Body(object):
             yield ele
 
     def parse(self, stub):
-        for sec in list(stub):
-            self.sections.append(Section(sec))
+        for elem in list(stub):
+            self.sections.append(html_classes[elem.tag](elem))
 
     def get_structure(self, main_sections=False):
         if main_sections is True:
-            sections = [ele.title for ele in self]
+            sections = [ele.title for ele in self if isinstance(ele, Section)]
         else:
-            sections = [(ele.title, ele.get_titles()) for ele in self]
+            sections = [(ele.title, ele.get_titles()) for ele in self if isinstance(ele, Section)]
         return sections
 
     def get_flat(self, sections=None):
         bd = []
         for sec in self:
             if sections is None or (isinstance(sections, list) and sec.title in sections):
-                # TODO: resolve issue where mutable return value of sec.get_content affects extend
                 bd.extend(sec.get_content(flatten=True))
         return bd
 
@@ -495,3 +546,16 @@ class Article(object):
 
     def get_authors(self):
         return self.front.article_meta.authors
+
+
+html_classes = {
+    "sec": Section,
+    "p": Paragraph,
+    "fig": Figure,
+    "graphic": GraphicMedia,
+    "media": GraphicMedia,
+    "table": Table,
+    "table-wrap": TableWrap,
+    "table-wrap-group": TableGroup,
+    "supplementary-material": SupplementaryMaterial
+}
