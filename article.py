@@ -2,21 +2,9 @@ import xml.etree.ElementTree as et
 import sys
 
 
-# TODO: find out how to call son method instead of placeholder
-# class XmlTag(object):
-#     def __init__(self, stub=None):
-#
-#         if stub is not None:
-#             self.parse(stub)
-#
-#     @classmethod
-#     def parse(self, stub):
-#         pass
-
-
 class SupplementaryMaterial(object):
     def __init__(self, stub=None):
-        self.label = None
+        self.title = None
         self.caption = None
         self.content = None
 
@@ -25,7 +13,7 @@ class SupplementaryMaterial(object):
 
     def parse(self, stub):
         label = stub.find("label")
-        self.label = label.text if label else None
+        self.title = label.text if label else None
         caption = stub.find("caption")
         self.caption = "".join(caption.itertext()) if caption else None
 
@@ -34,11 +22,21 @@ class SupplementaryMaterial(object):
             if ele.tag not in {"caption", "label"}:
                 self.content.append(html_classes[ele.tag](ele))
 
+    def get_content(self, flatten=False):
+        cnt = []
+        for ele in self.content:
+            if flatten is True:
+                cnt.extend(ele.get_content(flatten=flatten))
+            else:
+                cnt.append((ele.title, ele.get_content(flatten=flatten)))
+        return cnt
+        # return [(self.title, self.content)] if flatten is False else [self.content]
+
 
 class GraphicMedia(object):
     def __init__(self, stub=None):
         self.obj_id = None
-        self.label = None
+        self.title = None
         self.caption = None
         self.href = None
 
@@ -47,19 +45,20 @@ class GraphicMedia(object):
 
     def parse(self, stub):
         label = stub.find("label")
-        self.label = label.text if label else None
+        self.title = label.text if label else None
         caption = stub.find("caption")
         self.caption = "".join(caption.itertext()) if caption else None
 
         self.href = stub.get("ns0:href")
 
-    def get_content(self, flatten=None):
-        return [(self.caption, self.href)]
+    def get_content(self, flatten=False):
+        return [self.href]
 
 
 class Figure(object):
     def __init__(self, stub=None):
         self.label = None
+        self.title = None
         self.caption = None
         self.graphics = None
         self.namespace = None
@@ -72,18 +71,23 @@ class Figure(object):
         self.label = label.text if label else None
         caption = stub.find("caption")
         self.caption = caption.text if caption else None
+
+        self.title = self.label if self.label is not None else "" + self.caption if self.caption is not None else ""
+        self.title = self.title if self.title else None
+
         self.namespace = stub.get("xmlns:ns0")
 
         self.graphics = []
         for graphic in stub.findall("graphic"):
             self.graphics.append(GraphicMedia(graphic))
 
-    def get_content(self, flatten=None):
-        return [(self.caption, self.graphics)]
+    def get_content(self, flatten=False):
+        return [(self.title, self.graphics)] if flatten is False else list(map(repr, self.graphics))
+
 
 class TableGroup(object):
     def __init__(self, stub=None):
-        self.label = None
+        self.title = None
         self.caption = None
         self.tables = None
 
@@ -91,11 +95,11 @@ class TableGroup(object):
             self.parse(stub)
 
     def __repr__(self):
-        return "TableGroup(label={}, caption={}\n{})".format(self.label, self.caption, "\n".join(repr(t) for t in self.tables))
+        return "TableGroup(title={}, caption={}\n{})".format(self.title, self.caption, "\n".join(self.tables))
 
     def parse(self, stub):
         label = stub.find("label")
-        self.label = label.text if label else None
+        self.title = label.text if label else None
         caption = stub.find("caption")
         self.caption = caption.text if caption else None
 
@@ -107,6 +111,7 @@ class TableGroup(object):
 class TableWrap(object):
     def __init__(self, stub=None):
         self.label = None
+        self.title = None
         self.caption = None
         self.tables = None
         self.footer = None
@@ -115,13 +120,17 @@ class TableWrap(object):
             self.parse(stub)
 
     def __repr__(self):
-        return "TableWrap(label={}, caption={}\n{})".format(self.label, self.caption, "\n".join(repr(t) for t in self.tables))
+        return "TableWrap(title={}, caption={}\n{})".format(self.title, self.caption, "\n".join(self.tables))
 
     def parse(self, stub):
         label = stub.find("label")
         self.label = label.text if label else None
         caption = stub.find("caption")
-        self.caption = caption.text if caption else None
+        self.caption = "".join(caption.itertext()) if caption else None
+
+        self.title = self.label if self.label is not None else "" + self.caption if self.caption is not None else ""
+        self.title = self.title if self.title else None
+
         footer = stub.find("table-wrap-foot")
         self.footer = footer.text if footer else None
 
@@ -129,31 +138,33 @@ class TableWrap(object):
         for table in stub.findall("table"):
             self.tables.append(Table(table))
 
-    def get_content(self, flatten=None):
-        return [(self.caption, self.tables)]
+    def get_content(self, flatten=False):
+        return [(self.title, self.tables)] if flatten is False else self.tables
 
 
 class Table(object):
     def __init__(self, stub=None):
+        self.title = None
         self.content = None
-        self.caption = None
 
         if stub is not None:
             self.parse(stub)
 
     def __repr__(self):
+        return "\n{}".format("\n".join(self._tabulate()))
+
+    def _tabulate(self):
         rpr = []
 
         for row in self.content:
             col_widths = map(lambda t: len(max(t, key=len)), zip(*self.content))
             rpr.append("  ".join("{:<{r}}".format(cell, r=align) for cell, align in zip(row, col_widths)))
-
-        return "Table(caption='{}'\n{})".format(self.caption, "\n".join(rpr))
+        return rpr
 
     def parse(self, stub):
         # parse caption
-        caption = stub.find("caption")
-        self.caption = caption.text if caption else None
+        self.title = stub.get("id")
+
         # parse table
         self.content = []
         rowspans = {}
@@ -251,6 +262,7 @@ class Author(object):
 class Metadata(object):
     def __init__(self, stub=None):
         self.pmid = None
+        self.pmcid = None
         self.title = None
         self.doi = None
         self.authors = None
@@ -355,9 +367,12 @@ class Front(object):
 
 
 class Paragraph(object):
+    i = 1
+
     def __init__(self, stub=None):
-        self.title = None
+        self.title = "Paragraph{}".format(self.i)
         self.text = None
+        Paragraph.i += 1
 
         if stub is not None:
             self.parse(stub)
@@ -366,9 +381,10 @@ class Paragraph(object):
         return "Paragraph(nchars={})".format(len(self.text))
 
     def parse(self, stub):
+        # self.title = stub.get("id")
         self.text = ''.join(stub.itertext())
 
-    def get_content(self, flatten=None):
+    def get_content(self, flatten=False):
         """
         Mock method to comply with paragraphs that are direct children of Body.
 
@@ -379,7 +395,8 @@ class Paragraph(object):
         :param flatten:
         :return:
         """
-        return [(None, self.text)]
+
+        return [self.text]
 
 
 class Section(object):
@@ -401,45 +418,27 @@ class Section(object):
             if elem.tag == "title":
                 self.title = "".join(elem.itertext())
             else:
-                try:
-                    self.content.append(html_classes[elem.tag](elem))
-                except KeyError:
-                    if elem.tag == "italic":
-                        pass
-                    else:
-                        print(et.tostring(stub))
-                        print(i, et.tostring(elem))
-                        sys.exit()
-            # elif elem.tag == "sec":
-            #     self.content.append(Section(elem))
-            # elif elem.tag == 'p':
-            #     self.content.append(Paragraph(elem))
-            # elif elem.tag == "table-wrap":
-            #     self.content.append(TableWrap(elem))
-            # elif elem.tag == "table-wrap-group":
-            #     self.content.append(TableGroup(elem))
-            # elif elem.tag == "fig":
-            #     self.content.append(Figure(elem))
-            # elif elem.tag == "graphic":
-            #     self.content.append(Graphic(elem))
-            # elif elem.tag == "supplementary-material":
-            #     pass
-            # elif elem.tag == "italic":
-            #     pass
+                self.content.append(html_classes[elem.tag](elem))
 
     def get_content(self, flatten=False):
         # TODO: make all types compliant with get_content
+        cnt = []
+        for ele in self.content:
+            if flatten is True or not isinstance(ele, (Section, SupplementaryMaterial)):
+                cnt.extend(ele.get_content(flatten=flatten))
+            else:
+                cnt.append((ele.title, ele.get_content(flatten=flatten)))
+        return cnt
+
+    def get_text(self, flatten=False):
         txt = []
         for ele in self.content:
-            if isinstance(ele, Section):
+            # TODO: find other text-bearing elements
+            if isinstance(ele, (Section, Paragraph)):
                 if flatten is True:
                     txt.extend(ele.get_content(flatten=flatten))
                 else:
                     txt.append((ele.title, ele.get_content(flatten=flatten)))
-            elif isinstance(ele, (Paragraph, TableWrap, Figure, GraphicMedia)):
-                txt.append(ele.get_content())
-            else:
-                raise ValueError("I was expecting Section or Paragraph, got %s", type(ele))
         return txt
 
     def get_titles(self):
@@ -457,7 +456,7 @@ class Body(object):
         return len(self.sections)
 
     def __repr__(self):
-        return "Body({})".format(', '.join([repr(s) for s in self]))
+        return "Body({})".format(', '.join(map(repr, self)))
 
     def __iter__(self):
         for ele in self.sections:
@@ -499,6 +498,7 @@ class Article(object):
         self.front = None
         self.body = None
         self.back = None
+        Paragraph.i = 1
 
         if xml is not None:
             self.parse(xml)
@@ -540,6 +540,12 @@ class Article(object):
 
     def get_nested_text(self, main_sections=False):
         return self.body.get_nested(main_sections=main_sections)
+
+    def get_nested_body(self):
+        pass
+
+    def get_simple_body(self):
+        pass
 
     def get_body_structure(self, main_sections=False):
         return self.body.get_structure(main_sections=main_sections)
