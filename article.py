@@ -30,7 +30,6 @@ class SupplementaryMaterial(object):
             else:
                 cnt.append((ele.title, ele.get_content(flatten=flatten)))
         return cnt
-        # return [(self.title, self.content)] if flatten is False else [self.content]
 
 
 class GraphicMedia(object):
@@ -139,7 +138,7 @@ class TableWrap(object):
             self.tables.append(Table(table))
 
     def get_content(self, flatten=False):
-        return [(self.title, self.tables)] if flatten is False else self.tables
+        return [(self.title, self.tables)] if flatten is False else [repr(t) for t in self.tables]
 
 
 class Table(object):
@@ -384,7 +383,7 @@ class Paragraph(object):
         # self.title = stub.get("id")
         self.text = ''.join(stub.itertext())
 
-    def get_content(self, flatten=False):
+    def get_content(self, **kwargs):
         """
         Mock method to comply with paragraphs that are direct children of Body.
 
@@ -395,7 +394,6 @@ class Paragraph(object):
         :param flatten:
         :return:
         """
-
         return [self.text]
 
 
@@ -482,9 +480,9 @@ class Body(object):
 
     def get_nested(self, main_sections=False, sections=None):
         if main_sections is True:
-            secs = [(sec.title, " ".join(sec.get_content(flatten=True))) for sec in self]
+            secs = [(ele.title, " ".join(ele.get_content(flatten=True))) for ele in self]
         else:
-            secs = [(sec.title, sec.get_content()) for sec in self]
+            secs = [(ele.title, ele.get_content()) for ele in self]
 
         if sections is not None:
             secs = [e for e in secs if e[0] in sections]
@@ -535,17 +533,11 @@ class Article(object):
             elif elem.tag == "floats-group":
                 pass
 
-    def get_simple_text(self):
-        return "\n".join(self.body.get_flat())
+    def get_simple_text(self, sections=None):
+        return "\n".join(self.body.get_flat(sections=sections))
 
-    def get_nested_text(self, main_sections=False):
-        return self.body.get_nested(main_sections=main_sections)
-
-    def get_nested_body(self):
-        pass
-
-    def get_simple_body(self):
-        pass
+    def get_nested_text(self, main_sections=False, sections=None):
+        return self.body.get_nested(main_sections=main_sections, sections=sections) if self.body is not None else None
 
     def get_body_structure(self, main_sections=False):
         return self.body.get_structure(main_sections=main_sections)
@@ -556,6 +548,7 @@ class Article(object):
 
 html_classes = {
     "sec": Section,
+    "boxed-text": Section,
     "p": Paragraph,
     "fig": Figure,
     "graphic": GraphicMedia,
