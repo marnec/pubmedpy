@@ -9,9 +9,19 @@ import re
 import warnings
 
 
+def iter_articles(xml_file, parse=True):
+    """
+    Yield either parsed or raw `<article>` elements
 
+    Iterate over xml file and scan for <article> elements and yield
+    `article.Article` or `ElementTree.Element` object. Works with xml files
+    both bearing single or multiple `<article>` elements.
 
-def iter_articles(xml_file):
+    :param xml_file: path to xml file. Supports gzip'd files
+    :param parse: return `ElementTree` (`False`) or `Article` (`True`) object
+    :return: parsed article as `ElementTree` or `Article` object
+    """
+
     ext = os.path.splitext(xml_file)[-1]
     if ext == ".xml":
         open_f = open
@@ -22,14 +32,13 @@ def iter_articles(xml_file):
 
     with open_f(xml_file) as f:
         for event, elem in et.iterparse(f, events=("end",)):
-            if event == 'end':
-                if elem.tag == 'article':
-                    yield Article(elem)
+            if event == 'end' and elem.tag == 'article':
+                yield Article(elem) if parse is True else elem
 
 
 def reporthook(count, block_size, total_size):
-    pseudocount = 0.000001
     global start_time
+    pseudocount = 0.000001
 
     if count == 0:
         start_time = time.time()
@@ -46,9 +55,10 @@ def reporthook(count, block_size, total_size):
     sys.stdout.flush()
 
 
-def bulk_download_articles(db, n=None, use=None, download_dir=None):
+def bulk_download_articles(db, n=None, use=None, download_dir=None, progress=True):
     db_opts = {"epmc", "pmc"}
     use_opts = {"comm", "non_comm", "any"}
+    reportfunc = reporthook if progress is True else None
 
     db = db.lower()
     use = use.lower() if isinstance(use, str) else use
@@ -60,16 +70,16 @@ def bulk_download_articles(db, n=None, use=None, download_dir=None):
         if use not in use_opts:
             raise ValueError("Accepted values for use {}; got {}".format(use_opts, use))
         else:
-            _pmc_ftp_bulkdownload(n, use, download_dir)
+            _pmc_ftp_bulkdownload(n, use, download_dir, reportfunc)
 
     if db == "epmc":
         if use is not None:
             warnings.warn("Argument 'use' has no effect when db=epmc")
         else:
-            _epmc_ftp_bulkdownload(n, download_dir)
+            _epmc_ftp_bulkdownload(n, download_dir, reportfunc)
 
 
-def _epmc_ftp_bulkdownload(n, ddir=None):
+def _epmc_ftp_bulkdownload(n, ddir=None, reportfunc=None):
     baseurl = 'https://europepmc.org/ftp/oa/'
     lines = request.urlopen(baseurl).read().decode("utf-8").split('\n')
     lines = [l.split()[4:] for l in lines if "xml.gz" in l]
@@ -82,12 +92,12 @@ def _epmc_ftp_bulkdownload(n, ddir=None):
         if n is None or (n is not None and i < n):
             link = baseurl + fname
             fname = os.path.join(ddir, fname) if ddir is not None else fname
-            request.urlretrieve(link, fname, reporthook)
+            request.urlretrieve(link, fname, reportfunc)
         else:
             break
 
 
-def _pmc_ftp_bulkdownload(n, use, ddir=None):
+def _pmc_ftp_bulkdownload(n, use, ddir=None, reportfunc=None):
     baseurl = 'ftp://ftp.ncbi.nlm.nih.gov/pub/pmc/oa_bulk/'
     lines = request.urlopen(baseurl).read().decode("utf-8").split('\n')
     lines = [l.split()[4:] for l in lines if "xml.tar.gz" in l]
@@ -100,7 +110,7 @@ def _pmc_ftp_bulkdownload(n, use, ddir=None):
             if use == "any" or re.match(use, fname):
                 link = baseurl + fname
                 fname = os.path.join(ddir, fname) if ddir is not None else fname
-                request.urlretrieve(link, fname, reporthook)
+                request.urlretrieve(link, fname, reportfunc)
         else:
             break
 

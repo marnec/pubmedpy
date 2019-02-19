@@ -2,7 +2,7 @@ import xml.etree.ElementTree as et
 import sys
 
 
-class SupplementaryMaterial(object):
+class NestedContainer(object):
     def __init__(self, stub=None):
         self.title = None
         self.caption = None
@@ -50,7 +50,7 @@ class GraphicMedia(object):
 
         self.href = stub.get("ns0:href")
 
-    def get_content(self, flatten=False):
+    def get_content(self, **kwargs):
         return [self.href]
 
 
@@ -390,9 +390,6 @@ class Paragraph(object):
         Using this method Body.get_nested() and Body.get_flat() can retrieve text within
         paragraphs that are direct children of Body without the need of handling specific
         Types.
-
-        :param flatten:
-        :return:
         """
         return [self.text]
 
@@ -412,17 +409,21 @@ class Section(object):
         return len(self.content)
 
     def parse(self, stub):
-        for i, elem in enumerate(list(stub)):
-            if elem.tag == "title":
+        for elem in list(stub):
+            if elem.tag in {"title"}:
                 self.title = "".join(elem.itertext())
             else:
-                self.content.append(html_classes[elem.tag](elem))
+                try:
+                    self.content.append(html_classes[elem.tag](elem))
+                except KeyError:
+                    print(stub.tag, et.tostring(stub))
+                    raise KeyError
+
 
     def get_content(self, flatten=False):
-        # TODO: make all types compliant with get_content
         cnt = []
         for ele in self.content:
-            if flatten is True or not isinstance(ele, (Section, SupplementaryMaterial)):
+            if flatten is True or not isinstance(ele, (Section, NestedContainer)):
                 cnt.extend(ele.get_content(flatten=flatten))
             else:
                 cnt.append((ele.title, ele.get_content(flatten=flatten)))
@@ -445,24 +446,24 @@ class Section(object):
 
 class Body(object):
     def __init__(self, stub=None):
-        self.sections = []
+        self.content = []
 
         if stub is not None:
             self.parse(stub)
 
     def __len__(self):
-        return len(self.sections)
+        return len(self.content)
 
     def __repr__(self):
         return "Body({})".format(', '.join(map(repr, self)))
 
     def __iter__(self):
-        for ele in self.sections:
+        for ele in self.content:
             yield ele
 
     def parse(self, stub):
         for elem in list(stub):
-            self.sections.append(html_classes[elem.tag](elem))
+            self.content.append(html_classes[elem.tag](elem))
 
     def get_structure(self, main_sections=False):
         if main_sections is True:
@@ -471,11 +472,12 @@ class Body(object):
             sections = [(ele.title, ele.get_titles()) for ele in self if isinstance(ele, Section)]
         return sections
 
-    def get_flat(self, sections=None):
+    def get_flat(self, sections=None, text=False):
         bd = []
-        for sec in self:
-            if sections is None or (isinstance(sections, list) and sec.title in sections):
-                bd.extend(sec.get_content(flatten=True))
+        for ele in self:
+            if sections is None or (isinstance(sections, list) and ele.title in sections):
+                if text is False or not(isinstance(ele, (Figure, GraphicMedia))):
+                    bd.extend(ele.get_content(flatten=True))
         return bd
 
     def get_nested(self, main_sections=False, sections=None):
@@ -496,6 +498,7 @@ class Article(object):
         self.front = None
         self.body = None
         self.back = None
+        self.xml = None
         Paragraph.i = 1
 
         if xml is not None:
@@ -521,6 +524,7 @@ class Article(object):
         else:
             raise ValueError("Expecting str or ET.Element, got (%s)", type(xml))
 
+        self.xml = xml_tree
         self.type = xml_tree.attrib.get("article-type")
 
         for elem in list(xml_tree):
@@ -533,14 +537,22 @@ class Article(object):
             elif elem.tag == "floats-group":
                 pass
 
-    def get_simple_text(self, sections=None):
-        return "\n".join(self.body.get_flat(sections=sections))
+    # TODO: implement clean option
+    def get_flat_text(self, sections=None, clean=False):
+        return self.body.get_flat(sections=sections, text=True) if self.body is not None else None
 
-    def get_nested_text(self, main_sections=False, sections=None):
+    def get_flat_content(self, sections=None):
+        return self.body.get_flat(sections=sections) if self.body is not None else None
+
+    # TODO: implement this function
+    def get_nested_text(self, sections=None):
+        pass
+
+    def get_nested_content(self, main_sections=False, sections=None):
         return self.body.get_nested(main_sections=main_sections, sections=sections) if self.body is not None else None
 
     def get_body_structure(self, main_sections=False):
-        return self.body.get_structure(main_sections=main_sections)
+        return self.body.get_structure(main_sections=main_sections) if self.body is not None else None
 
     def get_authors(self):
         return self.front.article_meta.authors
@@ -548,7 +560,6 @@ class Article(object):
 
 html_classes = {
     "sec": Section,
-    "boxed-text": Section,
     "p": Paragraph,
     "fig": Figure,
     "graphic": GraphicMedia,
@@ -556,5 +567,6 @@ html_classes = {
     "table": Table,
     "table-wrap": TableWrap,
     "table-wrap-group": TableGroup,
-    "supplementary-material": SupplementaryMaterial
+    "supplementary-material": NestedContainer,
+    "boxed-text": NestedContainer,
 }
