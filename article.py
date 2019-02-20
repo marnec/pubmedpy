@@ -2,9 +2,30 @@ import xml.etree.ElementTree as et
 import sys
 
 
+class List(object):
+    def __init__(self, stub=None):
+        self.elements = None
+
+        if stub is not None:
+            self.parse(stub)
+
+    def __iter__(self):
+        for e in self.elements:
+            yield e
+
+    def repr(self):
+        return "List({})".format(self.elements)
+
+    def parse(self, stub):
+        self.elements = []
+        for item in stub.iter(tag="list-item"):
+            self.elements.append("".join(item.itertext()))
+
+
 class NestedContainer(object):
     def __init__(self, stub=None):
         self.title = None
+        self.label = None
         self.caption = None
         self.content = None
 
@@ -13,13 +34,23 @@ class NestedContainer(object):
 
     def parse(self, stub):
         label = stub.find("label")
-        self.title = label.text if label else None
+        self.label = label.text if label else None
         caption = stub.find("caption")
         self.caption = "".join(caption.itertext()) if caption else None
+        title = stub.find("title")
+        self.title = "".join(title.itertext()) if title is not None else None
+
+        if self.title is None:
+            self.title = ""
+        if self.label is not None:
+            self.title += self.label
+        if self.caption is not None:
+            self.title += self.caption
+        # self.title = self.title if self.title else None
 
         self.content = []
         for ele in list(stub):
-            if ele.tag not in {"caption", "label"}:
+            if ele.tag not in {"caption", "label", "title"} | unspported_tags:
                 self.content.append(html_classes[ele.tag](ele))
 
     def get_content(self, flatten=False):
@@ -32,9 +63,10 @@ class NestedContainer(object):
         return cnt
 
 
-class GraphicMedia(object):
+class ReferencedContent(object):
     def __init__(self, stub=None):
         self.obj_id = None
+        self.label = None
         self.title = None
         self.caption = None
         self.href = None
@@ -44,9 +76,18 @@ class GraphicMedia(object):
 
     def parse(self, stub):
         label = stub.find("label")
-        self.title = label.text if label else None
+        self.label = label.text if label else None
         caption = stub.find("caption")
         self.caption = "".join(caption.itertext()) if caption else None
+        title = stub.find("title")
+        self.title = "".join(title.itertext()) if title is not None else None
+
+        if self.title is None:
+            self.title = ""
+        if self.label is not None:
+            self.title += self.label
+        if self.caption is not None:
+            self.title += self.caption
 
         self.href = stub.get("ns0:href")
 
@@ -69,16 +110,22 @@ class Figure(object):
         label = stub.find("label")
         self.label = label.text if label else None
         caption = stub.find("caption")
-        self.caption = caption.text if caption else None
+        self.caption = "".join(caption.itertext()) if caption else None
+        title = stub.find("title")
+        self.title = "".join(title.itertext()) if title is not None else None
 
-        self.title = self.label if self.label is not None else "" + self.caption if self.caption is not None else ""
-        self.title = self.title if self.title else None
+        if self.title is None:
+            self.title = ""
+        if self.label is not None:
+            self.title += self.label
+        if self.caption is not None:
+            self.title += self.caption
 
         self.namespace = stub.get("xmlns:ns0")
 
         self.graphics = []
         for graphic in stub.findall("graphic"):
-            self.graphics.append(GraphicMedia(graphic))
+            self.graphics.append(ReferencedContent(graphic))
 
     def get_content(self, flatten=False):
         return [(self.title, self.graphics)] if flatten is False else list(map(repr, self.graphics))
@@ -86,6 +133,7 @@ class Figure(object):
 
 class TableGroup(object):
     def __init__(self, stub=None):
+        self.label = None
         self.title = None
         self.caption = None
         self.tables = None
@@ -98,13 +146,18 @@ class TableGroup(object):
 
     def parse(self, stub):
         label = stub.find("label")
-        self.title = label.text if label else None
+        self.label = label.text if label else None
         caption = stub.find("caption")
-        self.caption = caption.text if caption else None
+        self.caption = "".join(caption.itertext()) if caption else None
+        title = stub.find("title")
+        self.title = "".join(title.itertext()) if title is not None else None
 
-        self.tables = []
-        for table in stub.findall("table-wrap"):
-            self.tables.append(TableWrap(table))
+        if self.title is None:
+            self.title = ""
+        if self.label is not None:
+            self.title += self.label
+        if self.caption is not None:
+            self.title += self.caption
 
 
 class TableWrap(object):
@@ -126,9 +179,15 @@ class TableWrap(object):
         self.label = label.text if label else None
         caption = stub.find("caption")
         self.caption = "".join(caption.itertext()) if caption else None
+        title = stub.find("title")
+        self.title = "".join(title.itertext()) if title is not None else None
 
-        self.title = self.label if self.label is not None else "" + self.caption if self.caption is not None else ""
-        self.title = self.title if self.title else None
+        if self.title is None:
+            self.title = ""
+        if self.label is not None:
+            self.title += self.label
+        if self.caption is not None:
+            self.title += self.caption
 
         footer = stub.find("table-wrap-foot")
         self.footer = footer.text if footer else None
@@ -412,12 +471,14 @@ class Section(object):
         for elem in list(stub):
             if elem.tag in {"title"}:
                 self.title = "".join(elem.itertext())
+            elif elem.tag in unspported_tags:
+                pass  # ignore
             else:
                 try:
                     self.content.append(html_classes[elem.tag](elem))
-                except KeyError:
-                    print(stub.tag, et.tostring(stub))
-                    raise KeyError
+                except KeyError as e:
+                    print(elem.tag, et.tostring(elem))
+                    raise KeyError(e)
 
 
     def get_content(self, flatten=False):
@@ -463,7 +524,8 @@ class Body(object):
 
     def parse(self, stub):
         for elem in list(stub):
-            self.content.append(html_classes[elem.tag](elem))
+            if elem.tag not in unspported_tags:
+                self.content.append(html_classes[elem.tag](elem))
 
     def get_structure(self, main_sections=False):
         if main_sections is True:
@@ -476,7 +538,7 @@ class Body(object):
         bd = []
         for ele in self:
             if sections is None or (isinstance(sections, list) and ele.title in sections):
-                if text is False or not(isinstance(ele, (Figure, GraphicMedia))):
+                if text is False or not(isinstance(ele, (Figure, ReferencedContent))):
                     bd.extend(ele.get_content(flatten=True))
         return bd
 
@@ -558,15 +620,20 @@ class Article(object):
         return self.front.article_meta.authors
 
 
+# TODO: add support for tags
+unspported_tags = {"disp-quote", "ref-list", "def-list", "verse-group", "array"}
+
 html_classes = {
     "sec": Section,
     "p": Paragraph,
     "fig": Figure,
-    "graphic": GraphicMedia,
-    "media": GraphicMedia,
+    "graphic": ReferencedContent,
+    "media": ReferencedContent,
+    "disp-formula": ReferencedContent,
     "table": Table,
     "table-wrap": TableWrap,
     "table-wrap-group": TableGroup,
     "supplementary-material": NestedContainer,
     "boxed-text": NestedContainer,
+    "list": List
 }

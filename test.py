@@ -10,8 +10,8 @@ for i, article in enumerate(iter_articles("PMC13900_PMC549049.xml.gz", parse=Fal
     try:
         article = Article(article)
         article.get_nested_text()
-    except Exception:
+    except Exception as e:
         with open("examples/article{}.xml".format(i), 'wb') as f:
             f.write(et.tostring(article))
-            sys.exit()
-
+            if i not in {5690, 6034, 9172}:
+                raise e
