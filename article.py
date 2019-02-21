@@ -21,6 +21,10 @@ class List(object):
         for item in stub.iter(tag="list-item"):
             self.elements.append("".join(item.itertext()))
 
+    def get_content(self, **kwargs):
+        text = kwargs.get("text")
+        return [self.repr()] if text is True else [self]
+
 
 class NestedContainer(object):
     def __init__(self, stub=None):
@@ -31,6 +35,9 @@ class NestedContainer(object):
 
         if stub is not None:
             self.parse(stub)
+
+    def name(self):
+        return self.__class__.__name__
 
     def parse(self, stub):
         label = stub.find("label")
@@ -53,13 +60,14 @@ class NestedContainer(object):
             if ele.tag not in {"caption", "label", "title"} | unspported_tags:
                 self.content.append(html_classes[ele.tag](ele))
 
-    def get_content(self, flatten=False):
+    def get_content(self, flatten=False, text=False):
         cnt = []
         for ele in self.content:
             if flatten is True:
-                cnt.extend(ele.get_content(flatten=flatten))
+                cnt.extend(ele.get_content(flatten=flatten, text=text))
             else:
-                cnt.append((ele.title, ele.get_content(flatten=flatten)))
+                title = ele.title if text is True else ele.name()
+                cnt.append((title, ele.get_content(flatten=flatten, text=text)))
         return cnt
 
 
@@ -92,7 +100,8 @@ class ReferencedContent(object):
         self.href = stub.get("ns0:href")
 
     def get_content(self, **kwargs):
-        return [self.href]
+        text = kwargs.get("text")
+        return [self.href] if text is True else [self]
 
 
 class Figure(object):
@@ -105,6 +114,9 @@ class Figure(object):
 
         if stub is not None:
             self.parse(stub)
+
+    def name(self):
+        return self.__class__.__name__
 
     def parse(self, stub):
         label = stub.find("label")
@@ -127,8 +139,12 @@ class Figure(object):
         for graphic in stub.findall("graphic"):
             self.graphics.append(ReferencedContent(graphic))
 
-    def get_content(self, flatten=False):
-        return [(self.title, self.graphics)] if flatten is False else list(map(repr, self.graphics))
+    def get_content(self, flatten=False, text=False):
+        if text is True:
+            content = [(self.title, self.graphics)] if flatten is False else list(map(repr, self.graphics))
+        else:
+            content = [(self.name(), self.get_content(text=text))] if flatten is False else [self.get_content(text=text)]
+        return content
 
 
 class TableGroup(object):
@@ -136,13 +152,16 @@ class TableGroup(object):
         self.label = None
         self.title = None
         self.caption = None
-        self.tables = None
+        self.content = None
 
         if stub is not None:
             self.parse(stub)
 
     def __repr__(self):
-        return "TableGroup(title={}, caption={}\n{})".format(self.title, self.caption, "\n".join(self.tables))
+        return "TableGroup(title={}, caption={}\n{})".format(self.title, self.caption, "\n".join(self.content))
+
+    def name(self):
+        return self.__class__.__name__
 
     def parse(self, stub):
         label = stub.find("label")
@@ -159,6 +178,16 @@ class TableGroup(object):
         if self.caption is not None:
             self.title += self.caption
 
+    def get_content(self, flatten=False, text=False):
+        cnt = []
+        for ele in self.content:
+            if flatten is True:
+                cnt.extend(ele.get_content(flatten=flatten, text=text))
+            else:
+                title = ele.title if text is True else ele.name()
+                cnt.append((title, ele.get_content(flatten=flatten, text=text)))
+        return cnt
+
 
 class TableWrap(object):
     def __init__(self, stub=None):
@@ -173,6 +202,9 @@ class TableWrap(object):
 
     def __repr__(self):
         return "TableWrap(title={}, caption={}\n{})".format(self.title, self.caption, "\n".join(self.tables))
+
+    def name(self):
+        return self.__class__.__name__
 
     def parse(self, stub):
         label = stub.find("label")
@@ -196,14 +228,19 @@ class TableWrap(object):
         for table in stub.findall("table"):
             self.tables.append(Table(table))
 
-    def get_content(self, flatten=False):
-        return [(self.title, self.tables)] if flatten is False else [repr(t) for t in self.tables]
+    def get_content(self, flatten=False, text=False):
+        if text is True:
+            content = [(self.title, self.tables)] if flatten is False else [repr(t) for t in self.tables]
+        else:
+            content = [(self.name(), self.get_content(text=text))] if flatten is False else [self.get_content(text=text)]
+
+        return content
 
 
 class Table(object):
     def __init__(self, stub=None):
         self.title = None
-        self.content = None
+        self.rows = None
 
         if stub is not None:
             self.parse(stub)
@@ -214,8 +251,8 @@ class Table(object):
     def _tabulate(self):
         rpr = []
 
-        for row in self.content:
-            col_widths = map(lambda t: len(max(t, key=len)), zip(*self.content))
+        for row in self.rows:
+            col_widths = map(lambda t: len(max(t, key=len)), zip(*self.rows))
             rpr.append("  ".join("{:<{r}}".format(cell, r=align) for cell, align in zip(row, col_widths)))
         return rpr
 
@@ -224,7 +261,7 @@ class Table(object):
         self.title = stub.get("id")
 
         # parse table
-        self.content = []
+        self.rows = []
         rowspans = {}
         contents = {}
 
@@ -249,7 +286,11 @@ class Table(object):
                 row.extend([''.join(cell_text)]*colspan)
 
                 cell_index += colspan
-            self.content.append(row)
+            self.rows.append(row)
+
+    def get_content(self, **kwargs):
+        text = kwargs.get("text")
+        return [self.repr()] if text is True else [self]
 
 
 class Name(object):
@@ -450,7 +491,8 @@ class Paragraph(object):
         paragraphs that are direct children of Body without the need of handling specific
         Types.
         """
-        return [self.text]
+        text = kwargs.get("text")
+        return [self.text] if text is True else [self]
 
 
 class Section(object):
@@ -467,6 +509,9 @@ class Section(object):
     def __len__(self):
         return len(self.content)
 
+    def name(self):
+        return self.__class__.__name__
+
     def parse(self, stub):
         for elem in list(stub):
             if elem.tag in {"title"}:
@@ -481,25 +526,15 @@ class Section(object):
                     raise KeyError(e)
 
 
-    def get_content(self, flatten=False):
+    def get_content(self, flatten=False, text=False):
         cnt = []
         for ele in self.content:
             if flatten is True or not isinstance(ele, (Section, NestedContainer)):
-                cnt.extend(ele.get_content(flatten=flatten))
+                cnt.extend(ele.get_content(flatten=flatten, text=text))
             else:
-                cnt.append((ele.title, ele.get_content(flatten=flatten)))
+                title = ele.title if text is True else ele.name()
+                cnt.append((title, ele.get_content(flatten=flatten, text=text)))
         return cnt
-
-    def get_text(self, flatten=False):
-        txt = []
-        for ele in self.content:
-            # TODO: find other text-bearing elements
-            if isinstance(ele, (Section, Paragraph)):
-                if flatten is True:
-                    txt.extend(ele.get_content(flatten=flatten))
-                else:
-                    txt.append((ele.title, ele.get_content(flatten=flatten)))
-        return txt
 
     def get_titles(self):
         return [ele.title for ele in self.content if isinstance(ele, Section)]
@@ -538,21 +573,19 @@ class Body(object):
         bd = []
         for ele in self:
             if sections is None or (isinstance(sections, list) and ele.title in sections):
-                if text is False or not(isinstance(ele, (Figure, ReferencedContent))):
-                    bd.extend(ele.get_content(flatten=True))
+                bd.extend(ele.get_content(flatten=True, text=text))
         return bd
 
-    def get_nested(self, main_sections=False, sections=None):
+    def get_nested(self, main_sections=False, sections=None, text=False):
         if main_sections is True:
-            secs = [(ele.title, " ".join(ele.get_content(flatten=True))) for ele in self]
+            secs = [(ele.title, " ".join(ele.get_content(flatten=True, text=text))) for ele in self]
         else:
-            secs = [(ele.title, ele.get_content()) for ele in self]
+            secs = [(ele.title, ele.get_content(text=text)) for ele in self]
 
         if sections is not None:
             secs = [e for e in secs if e[0] in sections]
 
         return secs
-
 
 class Article(object):
     def __init__(self, xml=None):
@@ -606,9 +639,8 @@ class Article(object):
     def get_flat_content(self, sections=None):
         return self.body.get_flat(sections=sections) if self.body is not None else None
 
-    # TODO: implement this function
-    def get_nested_text(self, sections=None):
-        pass
+    def get_nested_text(self, main_sections=False, sections=None):
+        return self.body.get_nested(main_sections=main_sections, sections=sections, text=True) if self.body is not None else None
 
     def get_nested_content(self, main_sections=False, sections=None):
         return self.body.get_nested(main_sections=main_sections, sections=sections) if self.body is not None else None
@@ -619,6 +651,7 @@ class Article(object):
     def get_authors(self):
         return self.front.article_meta.authors
 
+nontext_types = {Table, TableWrap, Figure, ReferencedContent}
 
 # TODO: add support for tags
 unspported_tags = {"disp-quote", "ref-list", "def-list", "verse-group", "array"}
