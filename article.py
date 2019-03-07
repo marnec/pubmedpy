@@ -480,7 +480,6 @@ class Paragraph(object):
         return "Paragraph(nchars={})".format(len(self.text))
 
     def parse(self, stub):
-        # self.title = stub.get("id")
         self.text = ''.join(stub.itertext())
 
     def get_content(self, **kwargs):
@@ -594,6 +593,7 @@ class Article(object):
         self.body = None
         self.back = None
         self.xml = None
+        self._dict = None
         Paragraph.i = 1
 
         if xml is not None:
@@ -647,6 +647,11 @@ class Article(object):
 
     def get_body_structure(self, main_sections=False):
         return self.body.get_structure(main_sections=main_sections) if self.body is not None else None
+
+    def todict(self):
+        if self._dict is None:
+            self._dict = {ele.title: ele for ele in self.get_flat_content()}
+        return self._dict
 
     def get_authors(self):
         return self.front.article_meta.authors
