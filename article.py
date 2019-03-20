@@ -194,14 +194,15 @@ class TableWrap(object):
         self.label = None
         self.title = None
         self.caption = None
-        self.tables = None
+        self.content = None
         self.footer = None
 
         if stub is not None:
             self.parse(stub)
 
     def __repr__(self):
-        return "TableWrap(title={}, caption={}\n{})".format(self.title, self.caption, "\n".join(self.tables))
+        return "TableWrap(title={}, caption={}\n{})".format(
+            self.title, self.caption, "\n".join(self.get_content(text=True, flatten=True)))
 
     def name(self):
         return self.__class__.__name__
@@ -224,17 +225,26 @@ class TableWrap(object):
         footer = stub.find("table-wrap-foot")
         self.footer = footer.text if footer else None
 
-        self.tables = []
+        self.content = []
         for table in stub.findall("table"):
-            self.tables.append(Table(table))
+            self.content.append(Table(table))
 
+    # def get_content(self, flatten=False, text=False):
+    #     if text is True:
+    #         content = [(self.title, self.tables)] if flatten is False else [repr(t) for t in self.tables]
+    #     else:
+    #         content = [(self.name(), self.get_content(text=text, flatten=flatten))] if flatten is False else [self.get_content(text=text, flatten=flatten)]
+    #
+    #     return content
     def get_content(self, flatten=False, text=False):
-        if text is True:
-            content = [(self.title, self.tables)] if flatten is False else [repr(t) for t in self.tables]
-        else:
-            content = [(self.name(), self.get_content(text=text))] if flatten is False else [self.get_content(text=text)]
-
-        return content
+        cnt = []
+        for ele in self.content:
+            if flatten is True:
+                cnt.extend(ele.get_content(flatten=flatten, text=text))
+            else:
+                title = ele.title if text is True else ele.name()
+                cnt.append((title, ele.get_content(flatten=flatten, text=text)))
+        return cnt
 
 
 class Table(object):
@@ -247,6 +257,9 @@ class Table(object):
 
     def __repr__(self):
         return "\n{}".format("\n".join(self._tabulate()))
+
+    def __str__(self):
+        return "Table({})".format(self.rows)
 
     def _tabulate(self):
         rpr = []
@@ -594,6 +607,7 @@ class Article(object):
         self.back = None
         self.xml = None
         self._dict = None
+        self._list = None
         Paragraph.i = 1
 
         if xml is not None:
@@ -637,7 +651,9 @@ class Article(object):
         return self.body.get_flat(sections=sections, text=True) if self.body is not None else None
 
     def get_flat_content(self, sections=None):
-        return self.body.get_flat(sections=sections) if self.body is not None else None
+        if self._list is None:
+            self._list = self.body.get_flat(sections=sections) if self.body is not None else None
+        return self._list
 
     def get_nested_text(self, main_sections=False, sections=None):
         return self.body.get_nested(main_sections=main_sections, sections=sections, text=True) if self.body is not None else None
@@ -652,6 +668,14 @@ class Article(object):
         if self._dict is None:
             self._dict = {ele.title: ele for ele in self.get_flat_content()}
         return self._dict
+
+    def _get_object_by_id(self, obj_id):
+        adict = self.todict()
+        return adict.get(obj_id)
+
+    def get_table(self, table_id):
+        pass
+
 
     def get_authors(self):
         return self.front.article_meta.authors
