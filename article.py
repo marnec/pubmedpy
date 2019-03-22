@@ -229,13 +229,6 @@ class TableWrap(object):
         for table in stub.findall("table"):
             self.content.append(Table(table))
 
-    # def get_content(self, flatten=False, text=False):
-    #     if text is True:
-    #         content = [(self.title, self.tables)] if flatten is False else [repr(t) for t in self.tables]
-    #     else:
-    #         content = [(self.name(), self.get_content(text=text, flatten=flatten))] if flatten is False else [self.get_content(text=text, flatten=flatten)]
-    #
-    #     return content
     def get_content(self, flatten=False, text=False):
         cnt = []
         for ele in self.content:
@@ -248,30 +241,32 @@ class TableWrap(object):
 
 
 class Table(object):
+    i = 1
     def __init__(self, stub=None):
-        self.title = None
+        self.title = "Table{}".format(self.i)
         self.rows = None
+        Table.i += 1
 
         if stub is not None:
             self.parse(stub)
 
+    # def __repr__(self):
+    #     return "\n{}".format("\n".join(self._tabulate()))
+
     def __repr__(self):
-        return "\n{}".format("\n".join(self._tabulate()))
+        return "Table(shape=({}, {}))".format(len(self.rows), len(self.rows[0]))
 
-    def __str__(self):
-        return "Table({})".format(self.rows)
-
-    def _tabulate(self):
+    def tabulate(self):
         rpr = []
 
         for row in self.rows:
             col_widths = map(lambda t: len(max(t, key=len)), zip(*self.rows))
             rpr.append("  ".join("{:<{r}}".format(cell, r=align) for cell, align in zip(row, col_widths)))
-        return rpr
+        return '\n'.join(rpr)
 
     def parse(self, stub):
         # parse caption
-        self.title = stub.get("id")
+        # self.title = stub.get("id")
 
         # parse table
         self.rows = []
@@ -303,7 +298,7 @@ class Table(object):
 
     def get_content(self, **kwargs):
         text = kwargs.get("text")
-        return [self.repr()] if text is True else [self]
+        return [self.tabulate()] if text is True else [self]
 
 
 class Name(object):
@@ -673,9 +668,17 @@ class Article(object):
         adict = self.todict()
         return adict.get(obj_id)
 
-    def get_table(self, table_id):
-        pass
+    def _get_elements_by_type(self, etype):
+        return [ele for ele in self.get_flat_content() if isinstance(ele, etype)]
 
+    def get_tables(self):
+        return self._get_elements_by_type(Table)
+
+    def get_figures(self):
+        return self._get_elements_by_type(Figure)
+
+    def get_paragraphs(self):
+        return self._get_elements_by_type(Paragraph)
 
     def get_authors(self):
         return self.front.article_meta.authors
