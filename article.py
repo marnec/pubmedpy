@@ -1,11 +1,34 @@
-import xml.etree.ElementTree as et
+import xml.etree.ElementTree as ElementTree
 import warnings
+from countries import countries
+import re
+
+class BaseElement(object):
+    def __init__(self, stub):
+        self.xml = stub
+        self.graph = None
+        self.set_graph()
+
+    def set_graph(self):
+        graph = []
+        if self.xml:
+            for i, elem in enumerate(list(self.xml), 1):
+                graph.append((self.xml.tag, elem.tag))
+            self.graph = graph
 
 
-class ArticleElement(object):
-    def __init__(self):
+
+class BaseBodyElement(BaseElement):
+    def __init__(self, stub):
+        super(BaseBodyElement, self).__init__(stub)
+        self.label = None
+        self.caption = None
+        self.title = None
+
         # TODO: add support for tags
-        self.unspported_tags = {"disp-quote", "ref-list", "def-list", "verse-group", "array"}
+        self.unspported_tags = {"ref-list", "def-list", "verse-group", "array", 'inline-formula', 'email'}
+        self.emphasis_elements = {'bold', 'italic', 'monospace', 'overline',
+                                  'roman', 'sans-serif', 'sc', 'strike', 'underline', 'sup', 'sub'}
 
         self.html_classes = {
             "sec": Section,
@@ -18,13 +41,51 @@ class ArticleElement(object):
             "table-wrap": TableWrap,
             "table-wrap-group": TableGroup,
             "supplementary-material": NestedContainer,
-            "boxed-text": NestedContainer,
-            "list": List
+            "boxed-text": SeparatedContent,
+            'named-content': SeparatedContent,
+            'speech': SeparatedContent,
+            'speaker': Name,
+            "list": List,
+            'xref': ReferencedContent,
+            'ext-link': ReferencedContent,
+            'inline-graphic': ReferencedContent,
+            'disp-quotsing alle': NestedContainer,
+            'statement': NestedContainer,
+            'related-article': Front
         }
 
+    def name(self):
+        return self.__class__.__name__
 
-class List(object):
+    def set_descriptive_attributes(self, stub):
+        label = stub.find("label")
+        if label is not None:
+            self.label = label.text
+            stub.remove(label)
+
+        caption = stub.find("caption")
+        if caption is not None:
+            self.caption = "".join(caption.itertext())
+            stub.remove(caption)
+
+        title = stub.find("title")
+        if title is not None:
+            self.title = "".join(title.itertext())
+            stub.remove(title)
+
+        if self.title is None:
+            self.title = ""
+        if self.label is not None:
+            self.title += self.label
+        if self.caption is not None:
+            self.title += self.caption
+        if not self.title:
+            self.title = self.name()
+
+
+class List(BaseBodyElement):
     def __init__(self, stub=None):
+        super(List, self).__init__(stub)
         self.elements = None
         self.title = None
 
@@ -38,12 +99,8 @@ class List(object):
     def __repr__(self):
         return "List({})".format(self.elements)
 
-    def name(self):
-        return self.__class__.__name__
-
     def parse(self, stub):
-        title = stub.find("title")
-        self.title = "".join(title.itertext()) if title is not None else None
+        self.set_descriptive_attributes(stub)
 
         self.elements = []
         for item in stub.iter(tag="list-item"):
@@ -51,15 +108,34 @@ class List(object):
 
     def get_content(self, **kwargs):
         text = kwargs.get("text")
-        return [repr(self)] if text is True else [self]
+        flatten = kwargs.get('flatten')
+
+        content = ';'.join(self.elements) if text is True else self
+        return [content] if flatten is True else content
 
 
-class NestedContainer(ArticleElement):
+class Text(object):
+    def __init__(self, text, title=None):
+        self.text = text
+        self.title = title if title is not None else self.name()
+
+    def name(self):
+        return self.__class__.__name__
+
+    def __repr__(self):
+        return 'Text({})'.format(self.text)
+
+    def get_content(self, **kwargs):
+        text = kwargs.get('text')
+        flatten = kwargs.get('flatten')
+
+        content = self.text if text is True else self
+        return [content] if flatten is True else content
+
+
+class NestedContainer(BaseBodyElement):
     def __init__(self, stub=None):
-        super(NestedContainer, self).__init__()
-        self.title = None
-        self.label = None
-        self.caption = None
+        super(NestedContainer, self).__init__(stub)
         self.content = None
 
         if stub is not None:
@@ -68,137 +144,121 @@ class NestedContainer(ArticleElement):
     def name(self):
         return self.__class__.__name__
 
-    def parse(self, stub):
-        label = stub.find("label")
-        self.label = label.text if label else None
-        caption = stub.find("caption")
-        self.caption = "".join(caption.itertext()) if caption else None
-        title = stub.find("title")
-        self.title = "".join(title.itertext()) if title is not None else None
+    def __repr__(self):
+        return 'NestedContainer({})'.format(', '.join(map(repr, self)))
 
-        if self.title is None:
-            self.title = ""
-        if self.label is not None:
-            self.title += self.label
-        if self.caption is not None:
-            self.title += self.caption
-        # self.title = self.title if self.title else None
+    def __iter__(self):
+        if self.content:
+            for ele in self.content:
+                yield ele
+
+    def parse(self, stub):
+        self.set_descriptive_attributes(stub)
 
         self.content = []
+        if stub.text:
+            self.content.append(Text(stub.text))
+
         for ele in list(stub):
-            if ele.tag not in {"caption", "label", "title"} | self.unspported_tags:
+            if ele.tag in self.emphasis_elements:
+                self.content.append(Text(ele.text))
+            elif ele.tag not in self.unspported_tags:
                 self.content.append(self.html_classes[ele.tag](ele))
+            else:
+                # print(ele.tag, ElementTree.tostring(ele))
+                warnings.warn('{} is not supported'.format(ele.tag))
+
+            if ele.tail:
+                self.content.append(Text(ele.tail))
 
     def get_content(self, flatten=False, text=False):
-        cnt = []
+        content = []
         for ele in self.content:
+            print(ele)
             if flatten is True:
-                cnt.extend(ele.get_content(flatten=flatten, text=text))
+                content.extend(ele.get_content(flatten=flatten, text=text))
             else:
-                title = ele.title if text is True else ele.name()
-                cnt.append((title, ele.get_content(flatten=flatten, text=text)))
-        return cnt
+                # title = ele.title if text is True else ele.name()
+                # title = ele.title if ele.title else ele.name()
+                content.append((ele.title, ele.get_content(flatten=flatten, text=text))
+                               if isinstance(ele, NestedContainer) else ele.get_content(flatten=flatten, text=text))
+        return content
 
 
-class ReferencedContent(object):
+class SeparatedContent(NestedContainer):
+    def __init__(self, stub):
+        super(SeparatedContent, self).__init__(stub)
+
+
+class ReferencedContent(BaseBodyElement):
     def __init__(self, stub=None):
+        super(ReferencedContent, self).__init__(stub)
         self.obj_id = None
-        self.label = None
-        self.title = None
-        self.caption = None
         self.href = None
+        self.text = None
 
         if stub is not None:
             self.parse(stub)
 
     def __repr__(self):
-        return "ReferencedContent(href={})".format(self.href)
+        return "ReferencedContent(href={}, text={})".format(self.href, self.text)
 
     def name(self):
         return self.__class__.__name__
 
     def parse(self, stub):
-        label = stub.find("label")
-        self.label = label.text if label else None
-        caption = stub.find("caption")
-        self.caption = "".join(caption.itertext()) if caption else None
-        title = stub.find("title")
-        self.title = "".join(title.itertext()) if title is not None else None
-
-        if self.title is None:
-            self.title = ""
-        if self.label is not None:
-            self.title += self.label
-        if self.caption is not None:
-            self.title += self.caption
-
+        self.set_descriptive_attributes(stub)
+        self.text = stub.text if stub.text else ''
         self.href = stub.get("ns0:href")
 
     def get_content(self, **kwargs):
         text = kwargs.get("text")
-        return [self.href] if text is True else [self]
+        flatten = kwargs.get('flatten')
+
+        content = self.text if text is True else self
+        return [content] if flatten is True else content
 
 
-class Figure(object):
+class Figure(BaseBodyElement):
+    """
+    Figure should be a NestedContainer as it can contain any number of <p>.
+    However in order to make it selectable by its type (Article._get_elements_by_type) it needs to
+    be a leaf element. It is also common sense that, while in principle possible, a <fig> should
+    not contain arbitrarily nested elements but only a caption.
+
+    In order to cope with this the attribute Figure.text contains any text that exists
+    outside of caption and label. This is however a sub-optimal solution because any potential
+    structured element (e.g. <table>) inside <fig> would not be parsed correctly and its content
+    would be reported de-structured.
+    """
     def __init__(self, stub=None):
-        self.label = None
-        self.title = None
-        self.caption = None
+        super(Figure, self).__init__(stub)
         self.content = None
         self.namespace = None
+        self.text = None
 
         if stub is not None:
             self.parse(stub)
 
     def __repr__(self):
-        return "Figure({})".format(self.content)
-
-    def name(self):
-        return self.__class__.__name__
+        return "Figure(label={}, caption={}, text={})".format(self.content, self.caption, self.text)
 
     def parse(self, stub):
-        label = stub.find("label")
-        self.label = label.text if label else None
-        caption = stub.find("caption")
-        self.caption = "".join(caption.itertext()) if caption else None
-        title = stub.find("title")
-        self.title = "".join(title.itertext()) if title is not None else None
+        self.set_descriptive_attributes(stub)
+        text = ''.join(stub.itertext())
+        self.text = text if text else ''
 
-        if self.title is None:
-            self.title = ""
-        if self.label is not None:
-            self.title += self.label
-        if self.caption is not None:
-            self.title += self.caption
+    def get_content(self, **kwargs):
+        text = kwargs.get("text")
+        flatten = kwargs.get('flatten')
 
-        self.namespace = stub.get("xmlns:ns0")
-
-        self.content = []
-        for graphic in stub.findall("graphic"):
-            self.content.append(ReferencedContent(graphic))
-
-    def get_content(self, flatten=False, text=False):
-        cnt = []
-        for ele in self.content:
-            if flatten is True:
-                cnt.extend(ele.get_content(flatten=flatten, text=text))
-            else:
-                title = ele.title if text is True else ele.name()
-                cnt.append((title, ele.get_content(flatten=flatten, text=text)))
-        return cnt
-        # if text is True:
-        #     content = [(self.title, self.graphics)] if flatten is False else list(map(repr, self.graphics))
-        # else:
-        #     content = [(self.name(), self.get_content(text=text))] if flatten is False \
-        #         else [self.get_content(text=text)]
-        # return content
+        content = self.text if text is True else self
+        return [content] if flatten is True else content
 
 
-class TableGroup(object):
+class TableGroup(NestedContainer):
     def __init__(self, stub=None):
-        self.label = None
-        self.title = None
-        self.caption = None
+        super(TableGroup, self).__init__(stub)
         self.content = None
 
         if stub is not None:
@@ -207,40 +267,10 @@ class TableGroup(object):
     def __repr__(self):
         return "TableGroup(title={}, caption={} content={})".format(self.title, self.caption, self.content)
 
-    def name(self):
-        return self.__class__.__name__
 
-    def parse(self, stub):
-        label = stub.find("label")
-        self.label = label.text if label else None
-        caption = stub.find("caption")
-        self.caption = "".join(caption.itertext()) if caption else None
-        title = stub.find("title")
-        self.title = "".join(title.itertext()) if title is not None else None
-
-        if self.title is None:
-            self.title = ""
-        if self.label is not None:
-            self.title += self.label
-        if self.caption is not None:
-            self.title += self.caption
-
-    def get_content(self, flatten=False, text=False):
-        cnt = []
-        for ele in self.content:
-            if flatten is True:
-                cnt.extend(ele.get_content(flatten=flatten, text=text))
-            else:
-                title = ele.title if text is True else ele.name()
-                cnt.append((title, ele.get_content(flatten=flatten, text=text)))
-        return cnt
-
-
-class TableWrap(object):
+class TableWrap(NestedContainer):
     def __init__(self, stub=None):
-        self.label = None
-        self.title = None
-        self.caption = None
+        super(TableWrap, self).__init__(stub)
         self.content = None
         self.footer = None
 
@@ -250,23 +280,8 @@ class TableWrap(object):
     def __repr__(self):
         return "TableWrap(title={}, caption={} content={})".format(self.title, self.caption, self.content)
 
-    def name(self):
-        return self.__class__.__name__
-
     def parse(self, stub):
-        label = stub.find("label")
-        self.label = label.text if label else None
-        caption = stub.find("caption")
-        self.caption = "".join(caption.itertext()) if caption else None
-        title = stub.find("title")
-        self.title = "".join(title.itertext()) if title is not None else None
-
-        if self.title is None:
-            self.title = ""
-        if self.label is not None:
-            self.title += self.label
-        if self.caption is not None:
-            self.title += self.caption
+        self.set_descriptive_attributes(stub)
 
         footer = stub.find("table-wrap-foot")
         self.footer = footer.text if footer else None
@@ -275,21 +290,12 @@ class TableWrap(object):
         for table in stub.findall("table"):
             self.content.append(Table(table))
 
-    def get_content(self, flatten=False, text=False):
-        cnt = []
-        for ele in self.content:
-            if flatten is True:
-                cnt.extend(ele.get_content(flatten=flatten, text=text))
-            else:
-                title = ele.title if text is True else ele.name()
-                cnt.append((title, ele.get_content(flatten=flatten, text=text)))
-        return cnt
 
-
-class Table(object):
+class Table(BaseElement):
     i = 1
 
     def __init__(self, stub=None):
+        super(Table, self).__init__(stub)
         self.title = "Table{}".format(self.i)
         self.rows = None
         Table.i += 1
@@ -340,7 +346,8 @@ class Table(object):
                 try:
                     colspan = int(colspan) if colspan else 1
                 except ValueError:
-                    warnings.warn("html contained an error. Table {} will not be faithful to the original".format(self.title))
+                    warnings.warn("html contained an error. Table {} will not be "
+                                  "faithful to the original".format(self.title))
                     colspan = 1
                 row.extend([''.join(cell_text)]*colspan)
 
@@ -352,8 +359,9 @@ class Table(object):
         return [self.tabulate()] if text is True else [self]
 
 
-class Name(object):
+class Name(BaseElement):
     def __init__(self, stub=None):
+        super(Name, self).__init__(stub)
         self.surname = None
         self.given_names = None
         self.prefix = None
@@ -385,8 +393,9 @@ class Name(object):
             self.suffix = suffix.text if suffix is not None else None
 
 
-class Author(object):
+class Author(BaseElement):
     def __init__(self, stub=None, affs=None):
+        super(Author, self).__init__(stub)
         self.name = None
         self.affiliations = None
         self.email = None
@@ -415,10 +424,12 @@ class Author(object):
         # affiliations
         affils = stub.findall("xref[@ref-type='aff']")
         self.affiliations = [affs.get(aff.get("rid")) for aff in affils if aff is not None]
+        self.affiliations = self.affiliations if self.affiliations else list(affs.values())
 
 
-class Metadata(object):
+class Metadata(BaseElement):
     def __init__(self, stub=None):
+        super(Metadata, self).__init__(stub)
         self.pmid = None
         self.pmcid = None
         self.title = None
@@ -441,18 +452,28 @@ class Metadata(object):
         self.doi = doi.text if doi is not None else None
 
         self.title = stub.find("title-group/article-title").text
-        self.authors = self._parse_authors(
-            stub.findall("contrib-group/contrib[@contrib-type='author']"),
-            stub.findall("contrib-group/aff"))
+
+        author_tags = stub.findall("contrib-group/contrib[@contrib-type='author']")
+        affils_tags = stub.findall("contrib-group/aff")
+
+        if not affils_tags:
+            affils_tags = stub.findall('aff')
+            # if affils_tags:
+            # # affils_tags = [affils_tags for _ in author_tags]
+
+        self.authors = self._parse_authors(author_tags, affils_tags)
 
     @staticmethod
     def _parse_authors(contrib_group, aff):
         authors = []
         affiliations = {}
 
-        for affil in aff:
+        for i, affil in enumerate(aff):
             aff = Affiliation(affil)
-            affiliations[aff.aid] = aff
+            if aff.aid is not None:
+                affiliations[aff.aid] = aff
+            else:
+                affiliations[i] = aff
 
         for contrib in contrib_group:
             author = Author(contrib, affiliations)
@@ -461,8 +482,9 @@ class Metadata(object):
         return authors
 
 
-class Affiliation(object):
+class Affiliation(BaseElement):
     def __init__(self, stub=None):
+        super(Affiliation, self).__init__(stub)
         self.institution = None
         self.aid = None
 
@@ -476,16 +498,20 @@ class Affiliation(object):
         self.aid = stub.get('id')
 
         inst_wrap = stub.find("institution-wrap")
+        inst_wrap = inst_wrap if inst_wrap is not None else stub
+
         if inst_wrap is not None:
-            self.institution = [e.text for e in inst_wrap.findall("institution") if e is not None]
+            institution = inst_wrap.findall("institution")
+            self.institution = [e.text for e in institution if e is not None] if institution else [inst_wrap.text]
 
             geo = inst_wrap.tail
             if geo is not None:
                 self.institution.append(geo)
 
 
-class Journal(object):
+class Journal(BaseElement):
     def __init__(self, stub=None):
+        super(Journal, self).__init__(stub)
         self.jid = None
         self.title = None
 
@@ -501,57 +527,42 @@ class Journal(object):
         self.jid = stub.find("journal-id").text
 
 
-class Front(object):
+class Front(BaseElement):
     def __init__(self, stub=None):
+        super(Front, self).__init__(stub)
         self.journal_meta = None
         self.article_meta = None
 
         if stub is not None:
             self.parse(stub)
 
-    def __repr__(self):
-        rpr = "Front("
-        if self.journal_meta is not None:
-            rpr += "\n" + repr(self.journal_meta)
-        if self.article_meta is not None:
-            rpr += "\n" + repr(self.article_meta)
-        rpr += ')'
+    def __iter__(self):
+        for ele in [self.journal_meta, self.article_meta]:
+            yield ele
 
-        return rpr
+    def __repr__(self):
+        return "Front({})".format(', '.join(map(repr, self)))
 
     def parse(self, stub):
         self.journal_meta = Journal(stub.find("journal-meta"))
         self.article_meta = Metadata(stub.find("article-meta"))
 
 
-class Paragraph(object):
+class Paragraph(NestedContainer):
     i = 1
 
     def __init__(self, stub=None):
+        super(Paragraph, self).__init__(stub)
         self.title = "Paragraph{}".format(self.i)
-        self.text = None
         Paragraph.i += 1
 
-        if stub is not None:
-            self.parse(stub)
-
     def __repr__(self):
-        return "Paragraph(nchars={})".format(len(self.text))
-
-    def name(self):
-        return self.__class__.__name__
-
-    def parse(self, stub):
-        self.text = ''.join(stub.itertext())
-
-    def get_content(self, **kwargs):
-        text = kwargs.get("text")
-        return [self.text] if text is True else [self]
+        return "Paragraph(i={}, {})".format(self.i, ', '.join(map(repr, self)))
 
 
-class Section(ArticleElement):
+class Section(NestedContainer):
     def __init__(self, stub=None):
-        super(Section, self).__init__()
+        super(Section, self).__init__(stub)
         self.title = None
         self.content = []
 
@@ -564,39 +575,13 @@ class Section(ArticleElement):
     def __len__(self):
         return len(self.content)
 
-    def name(self):
-        return self.__class__.__name__
-
-    def parse(self, stub):
-        for elem in list(stub):
-            if elem.tag in {"title"}:
-                self.title = "".join(elem.itertext())
-            elif elem.tag in self.unspported_tags:
-                pass  # ignore
-            else:
-                try:
-                    self.content.append(self.html_classes[elem.tag](elem))
-                except KeyError as e:
-                    print(elem.tag, et.tostring(elem))
-                    raise KeyError(e)
-
-    def get_content(self, flatten=False, text=False):
-        cnt = []
-        for ele in self.content:
-            if flatten is True or not isinstance(ele, (Section, NestedContainer)):
-                cnt.extend(ele.get_content(flatten=flatten, text=text))
-            else:
-                title = ele.title if text is True else ele.name()
-                cnt.append((title, ele.get_content(flatten=flatten, text=text)))
-        return cnt
-
     def get_titles(self):
         return [ele.title for ele in self.content if isinstance(ele, Section)]
 
 
-class Body(ArticleElement):
+class Body(BaseBodyElement):
     def __init__(self, stub=None):
-        super(Body, self).__init__()
+        super(Body, self).__init__(stub)
         self.content = []
 
         if stub is not None:
@@ -609,8 +594,9 @@ class Body(ArticleElement):
         return "Body({})".format(', '.join(map(repr, self)))
 
     def __iter__(self):
-        for ele in self.content:
-            yield ele
+        if self.content is not None:
+            for ele in self.content:
+                yield ele
 
     def parse(self, stub):
         for elem in list(stub):
@@ -622,16 +608,17 @@ class Body(ArticleElement):
             sections = [ele.title for ele in self if isinstance(ele, Section)]
         else:
             sections = [(ele.title, ele.get_titles()) for ele in self if isinstance(ele, Section)]
+
         return sections
 
     def get_flat(self, sections=None, text=False):
         bd = []
         for ele in self:
             if sections is None or (isinstance(sections, list) and ele.title in sections):
+                # print(ele.get_content(flatten=True, text=True))
                 bd.extend(ele.get_content(flatten=True, text=text))
         return bd
 
-    #TODO: account for get_nested_content
     def get_nested(self, main_sections=False, sections=None, text=False):
         if main_sections is True:
             if text is True:
@@ -648,13 +635,13 @@ class Body(ArticleElement):
         return secs
 
 
-class Article(object):
+class Article(BaseElement):
     def __init__(self, xml=None):
+        super(Article, self).__init__(xml)
         self.type = None
         self.front = None
         self.body = None
         self.back = None
-        self.xml = None
         self._dict = None
         self._list = None
         Paragraph.i = 1
@@ -663,21 +650,15 @@ class Article(object):
             self.parse(xml)
 
     def __repr__(self):
-        rpr = "Article("
-        if self.front is not None:
-            rpr += repr(self.front)
-        if self.type is not None:
-            rpr += "\nType='{}'".format(self.type)
-        if self.body is not None:
-            rpr += "\n" + repr(self.body)
-        rpr += ')'
-
-        return rpr
+        return 'Article(journal={}, title={})'.format(
+            self.front.article_meta.title,
+            self.front.journal_meta
+        )
 
     def parse(self, xml):
         if isinstance(xml, str):
-            xml_tree = et.parse(xml)
-        elif isinstance(xml, et.Element):
+            xml_tree = ElementTree.parse(xml)
+        elif isinstance(xml, ElementTree.Element):
             xml_tree = xml
         else:
             raise ValueError("Expecting str or ET.Element, got (%s)", type(xml))
@@ -696,7 +677,7 @@ class Article(object):
                 pass
 
     # TODO: implement clean option
-    def get_flat_text(self, sections=None, clean=False):
+    def get_flat_text(self, sections=None):
         return self.body.get_flat(sections=sections, text=True) if self.body is not None else None
 
     def get_flat_content(self, sections=None):
@@ -724,6 +705,13 @@ class Article(object):
         adict = self.todict()
         return adict.get(obj_id)
 
+    # def _flatten(self, container):
+    #     for i in container:
+    #         if isinstance(i, (list, NestedContainer)):
+    #             yield from self._flatten(i)
+    #         else:
+    #             yield i
+
     def _get_elements_by_type(self, etype):
         return [ele for ele in self.get_flat_content() if isinstance(ele, etype)]
 
@@ -733,8 +721,24 @@ class Article(object):
     def get_figures(self):
         return self._get_elements_by_type(Figure)
 
-    def get_paragraphs(self):
-        return self._get_elements_by_type(Paragraph)
+    # def get_paragraphs(self):
+    #     return self._get_elements_by_type(Paragraph)
 
     def get_authors(self):
         return self.front.article_meta.authors
+
+    def get_title(self):
+        return self.front.article_meta.title
+
+    def get_affiliations(self):
+        return [aff for auth_aff in (a.affiliations for a in self.get_authors()) for aff in auth_aff if aff]
+
+    def get_countries(self):
+        c = []
+        affils = self.get_affiliations()
+
+        if affils:
+            p = re.compile('(' + ')|('.join(countries) + ')')
+            c = [p.search(' '.join(a.institution)) for a in self.get_affiliations()]
+            c = [m.group() for m in c if m]
+        return c

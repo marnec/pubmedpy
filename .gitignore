@@ -1,5 +1,7 @@
 # IntelliJ project files
+bulk/
 .idea
+.venv
 .pyc
 .gitignore
-test.py
+

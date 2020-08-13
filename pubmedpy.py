@@ -1,12 +1,27 @@
 import xml.etree.ElementTree as et
 from article import Article
 from urllib import request
+import argparse
 import sys
 import time
 import gzip
 import os
 import re
 import warnings
+
+DBs = {"epmc", "pmc"}
+USEs = {"comm", "non_comm", "any"}
+
+def parse_article(xml_file, parse=True):
+    """
+    Parse the first <article> element found in an xml file
+
+    :param xml_file: path to xml file. Supports gzip'd files
+    :param parse: return `ElementTree` (`False`) or `Article` (`True`) object
+    :return: alwasy one parsed article as `ElementTree` or `Article` object
+    """
+    for article in iter_articles(xml_file, parse=parse):
+        return article
 
 
 def iter_articles(xml_file, parse=True):
@@ -49,26 +64,25 @@ def reporthook(count, block_size, total_size):
     speed = int(progress_size / (1024 * (duration + pseudocount)))
     percent = min(int(count*block_size*100/total_size), 100)
 
-    sys.stdout.write("\r{}%, {:.1f} MB, {} KB/s, {:.0f} seconds passed".format(
-        percent, progress_size / (1024 * 1024), speed, duration))
+    if percent % .5 == 0:
+        sys.stdout.write("\r{}%, {:.1f} MB, {} KB/s, {:.0f} seconds passed".format(
+            percent, progress_size / (1024 * 1024), speed, duration))
 
     sys.stdout.flush()
 
 
 def bulk_download_articles(db, n=None, use=None, download_dir=None, progress=True):
-    db_opts = {"epmc", "pmc"}
-    use_opts = {"comm", "non_comm", "any"}
     reportfunc = reporthook if progress is True else None
 
     db = db.lower()
     use = use.lower() if isinstance(use, str) else use
 
-    if db not in db_opts:
-        raise ValueError("Accepted values for db {}; got {}".format(db_opts, db))
+    if db not in DBs:
+        raise ValueError("Accepted values for db {}; got {}".format(DBs, db))
 
     if db == "pmc":
-        if use not in use_opts:
-            raise ValueError("Accepted values for use {}; got {}".format(use_opts, use))
+        if use not in USEs:
+            raise ValueError("Accepted values for use {}; got {}".format(USEs, use))
         else:
             _pmc_ftp_bulkdownload(n, use, download_dir, reportfunc)
 
@@ -95,6 +109,7 @@ def _epmc_ftp_bulkdownload(n, ddir=None, reportfunc=None):
             request.urlretrieve(link, fname, reportfunc)
         else:
             break
+        print()
 
 
 def _pmc_ftp_bulkdownload(n, use, ddir=None, reportfunc=None):
@@ -130,3 +145,24 @@ def file_type(filename):
     for magic, filetype in compression_signatures.items():
         if file_start.startswith(magic):
             return filetype
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Process some integers.')
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('-d', '--download', choices=DBs, help='db from which to download the articles')
+    parser.add_argument('-u', '--usetype', default='any', choices=USEs, help='download commercial or non-commercial articles')
+    group.add_argument('-p', '-parse', help='parse file with single or mutiple articles (also work with archives)')
+
+    return parser.parse_args()
+
+
+if __name__ == '__main__':
+    args = parse_args()
+
+    if args.download:
+        bulk_download_articles(args.download, use=args.usetype)
+    elif args.parse:
+        for article in iter_articles(args.parse):
+            pass
+
