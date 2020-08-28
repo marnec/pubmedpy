@@ -148,7 +148,7 @@ class NestedContainer(BaseBodyElement):
         return 'NestedContainer({})'.format(', '.join(map(repr, self)))
 
     def __iter__(self):
-        if self.content:
+        if self.content is not None:
             for ele in self.content:
                 yield ele
 
@@ -174,7 +174,6 @@ class NestedContainer(BaseBodyElement):
     def get_content(self, flatten=False, text=False):
         content = []
         for ele in self.content:
-            print(ele)
             if flatten is True:
                 content.extend(ele.get_content(flatten=flatten, text=text))
             else:
@@ -258,11 +257,12 @@ class Figure(BaseBodyElement):
 
 class TableGroup(NestedContainer):
     def __init__(self, stub=None):
+        # self.content = None
         super(TableGroup, self).__init__(stub)
-        self.content = None
-
-        if stub is not None:
-            self.parse(stub)
+        # self.content = None
+        #
+        # if stub is not None:
+        #     self.parse(stub)
 
     def __repr__(self):
         return "TableGroup(title={}, caption={} content={})".format(self.title, self.caption, self.content)
@@ -271,11 +271,11 @@ class TableGroup(NestedContainer):
 class TableWrap(NestedContainer):
     def __init__(self, stub=None):
         super(TableWrap, self).__init__(stub)
-        self.content = None
+
         self.footer = None
 
-        if stub is not None:
-            self.parse(stub)
+        # if stub is not None:
+        #     self.parse(stub)
 
     def __repr__(self):
         return "TableWrap(title={}, caption={} content={})".format(self.title, self.caption, self.content)
@@ -553,21 +553,20 @@ class Paragraph(NestedContainer):
 
     def __init__(self, stub=None):
         super(Paragraph, self).__init__(stub)
-        self.title = "Paragraph{}".format(self.i)
+        self.n = Paragraph.i
+        self.title = "Paragraph{}".format(self.n)
         Paragraph.i += 1
 
     def __repr__(self):
-        return "Paragraph(i={}, {})".format(self.i, ', '.join(map(repr, self)))
+        return "Paragraph(i={}, {})".format(self.n, ', '.join(map(repr, self)))
 
 
 class Section(NestedContainer):
     def __init__(self, stub=None):
         super(Section, self).__init__(stub)
-        self.title = None
-        self.content = []
-
-        if stub is not None:
-            self.parse(stub)
+        #
+        # # if stub is not None:
+        # #     self.parse(stub)
 
     def __repr__(self):
         return "\nSection(title='{}', content={})".format(self.title, self.content)
@@ -615,7 +614,6 @@ class Body(BaseBodyElement):
         bd = []
         for ele in self:
             if sections is None or (isinstance(sections, list) and ele.title in sections):
-                # print(ele.get_content(flatten=True, text=True))
                 bd.extend(ele.get_content(flatten=True, text=text))
         return bd
 
