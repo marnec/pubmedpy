@@ -1,0 +1,11 @@
+strict digraph  {
+sec;
+p;
+fig;
+caption;
+sec -> p;
+p -> fig;
+fig -> caption;
+fig -> p;
+caption -> p;
+}
